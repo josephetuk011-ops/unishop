@@ -1,0 +1,35 @@
+{
+  "name": "e-marketplace",
+  "version": "1.0.0",
+  "description": "An e-marketplace application for vendors and service providers.",
+  "main": "src/app.ts",
+  "scripts": {
+    "start": "ts-node src/app.ts",
+    "test": "jest",
+    "test:payments": "node tests/payment-flow-smoke.cjs && node tests/payments-disabled-smoke.cjs"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^8.2.0",
+    "express": "^4.17.1",
+    "jsonwebtoken": "^8.5.1",
+    "mongoose": "^5.10.9",
+    "multer": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.8",
+    "@types/jest": "^26.0.24",
+    "@types/multer": "^2.3.0",
+    "jest": "^26.6.3",
+    "ts-node": "^9.1.1",
+    "typescript": "^5.9.3"
+  },
+  "keywords": [
+    "e-commerce",
+    "marketplace",
+    "vendors",
+    "services"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

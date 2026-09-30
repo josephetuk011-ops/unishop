@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101723">
+  <title>Unishop workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/dashboard.css">
+  <script src="/dashboard.js" defer></script>
+</head>
+<body>
+  <div class="workspace-shell">
+    <aside class="workspace-sidebar">
+      <a class="workspace-brand" href="/"><img src="/assets/unishop-logo.jpeg" alt=""><span>UNISHOP<span class="brand-caption">UYO MARKETPLACE</span></span></a>
+      <div class="workspace-context"><span class="context-dot"></span><span>Workspace<br><strong id="workspace-role">Loading</strong></span></div>
+      <nav class="workspace-nav" aria-label="Workspace sections">
+        <a class="active" href="#overview" data-view="overview"><span>▦</span> Overview</a>
+        <a href="#listings" data-view="listings"><span>◇</span><span id="listing-nav-label">My listings</span></a>
+        <a href="#activity" data-view="activity"><span>≡</span><span id="activity-nav-label">Activity</span></a>
+        <a href="#earnings" data-view="earnings"><span>₦</span> Earnings</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="profile-mini"><span class="profile-avatar" id="profile-initials">U</span><span><strong id="profile-name">Loading</strong><small id="profile-detail">Uyo, Akwa Ibom</small></span></div><button class="signout-button" id="signout-button">Sign out</button><a class="back-link" href="/">← Back to marketplace</a></div>
+    </aside>
+    <main class="workspace-main">
+      <header class="workspace-header"><div><p class="eyebrow">UYO, AKWA IBOM · UNISHOP</p><h1 id="welcome-title">Your workspace</h1></div><div class="header-tools"><button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark theme" title="Toggle dark theme">◐</button><span class="today-label" id="today-label"></span></div></header>
+      <section class="workspace-content" id="workspace-content" aria-live="polite"><div class="loading-state">Loading your marketplace workspace…</div></section>
+      <footer class="workspace-footer"><span>Unishop Uyo</span><span>Sales and earnings show marketplace records. Settlements require an enabled payout integration.</span></footer>
+    </main>
+  </div>
+  <div id="workspace-toast" role="status" aria-live="polite"></div>
+</body>
+</html>

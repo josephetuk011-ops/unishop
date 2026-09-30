@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: unishop-uyo
+    runtime: node
+    plan: starter
+    rootDir: .
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: unishop-data
+      mountPath: /var/data/unishop
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MARKETPLACE_DATA_PATH
+        value: /var/data/unishop/marketplace.json
+      - key: UPLOADS_DIRECTORY
+        value: /var/data/unishop/uploads
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
