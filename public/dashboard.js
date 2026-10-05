@@ -1,6 +1,6 @@
 const token = localStorage.getItem('unishop-token') || '';
 const workspace = document.querySelector('#workspace-content');
-const roleLabels = { provider: 'Service provider', seller: 'Seller', dispatch: 'Dispatch rider', customer: 'Customer' };
+const roleLabels = { provider: 'Service provider', seller: 'Vendors and Brands', dispatch: 'Dispatch rider', customer: 'Customer', admin: 'Admin' };
 const roleNiches = ['Barbing', 'Cleaning', 'Cooking', 'Hair dressing', 'Decorating', 'Grass clearing', 'Mechanic', 'Electrician', 'Plumber', 'Photographer', 'Makeup', 'Fashion designing', 'Manicure and pedicure', 'Therapist'];
 let dashboardData;
 let selectedView = 'overview';
@@ -102,6 +102,84 @@ function sellerDashboard() {
   return `${header(`Welcome, ${user.name.split(' ')[0]}`, user.businessName || 'Seller workspace', '<button class="primary-button" data-open-form="product">+ Add product</button>')}<div class="metric-grid">${metric('Active products', metrics.productCount)}${metric('Paid orders', metrics.orderCount)}${metric('Verified gross sales', formatMoney(metrics.grossSales), 'Before commission and dispatch contribution')}</div><div class="dashboard-grid">${panel('Recent orders', table(['Order', 'Products', 'Total', 'Payment'], orderRows(orders.slice(-5)), 'No paid orders yet.'))}${panel('Latest products', `<div class="compact-list">${products.slice(-4).reverse().map((product) => `<div class="compact-row"><img src="${escapeHtml(product.image)}" alt=""><span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.category)}</small></span><b>${formatMoney(product.price)}</b></div>`).join('') || '<div class="empty-state">Your products will appear here.</div>'}</div>`)}</div>${moneyNote()}${payoutPanel()}${productForm()}`;
 }
 function productForm() { return '<div class="panel-gap">' + sellerForm() + '</div>'; }
+function adminDashboard() {
+  const { metrics, users, orders, bookings, breakdown = {} } = dashboardData;
+  const userRows = (users || []).slice(0, 5).map((user) => `<div class="admin-list-row"><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.role)} · ${escapeHtml(user.email)}</small></div><span class="status-pill ${escapeHtml(user.role)}">${escapeHtml(user.role)}</span></div>`).join('') || '<div class="empty-state">No users recorded yet.</div>';
+  const orderRows = (orders || []).slice(0, 4).map((order) => `<div class="admin-list-row"><div><strong>${escapeHtml(order.reference)}</strong><small>${formatDate(order.createdAt)}</small></div><div class="admin-mini-meta"><b>${formatMoney(order.totalNaira)}</b><span class="status-pill ${escapeHtml(order.paymentStatus)}">${escapeHtml(order.paymentStatus)}</span></div></div>`).join('') || '<div class="empty-state">No marketplace orders yet.</div>';
+  const bookingRows = (bookings || []).slice(0, 4).map((booking) => `<div class="admin-list-row"><div><strong>${escapeHtml(booking.provider || booking.service || 'Service')}</strong><small>${escapeHtml(booking.userId || 'Customer')}</small></div><div class="admin-mini-meta"><b>${formatMoney(booking.amountNaira || 0)}</b><span class="status-pill ${escapeHtml(booking.status)}">${escapeHtml(booking.status)}</span></div></div>`).join('') || '<div class="empty-state">No bookings yet.</div>';
+  const roleBreakdown = Object.entries(breakdown.roles || {}).map(([role, count]) => `
+    <div class="compact-row"><span><strong>${escapeHtml(role)}</strong><small>Registered accounts</small></span><b>${count}</b></div>`).join('') || '<div class="empty-state">No role activity yet.</div>';
+  const orderBreakdown = Object.entries(breakdown.orders || {}).map(([status, count]) => `
+    <div class="compact-row"><span><strong>${escapeHtml(status)}</strong><small>Orders in this state</small></span><b>${count}</b></div>`).join('') || '<div class="empty-state">No order activity yet.</div>';
+  const bookingBreakdown = Object.entries(breakdown.bookings || {}).map(([status, count]) => `
+    <div class="compact-row"><span><strong>${escapeHtml(status)}</strong><small>Bookings in this state</small></span><b>${count}</b></div>`).join('') || '<div class="empty-state">No booking activity yet.</div>';
+  const catalogBreakdown = Object.entries(breakdown.catalog || {}).map(([key, count]) => `
+    <div class="compact-row"><span><strong>${escapeHtml(key)}</strong><small>Live marketplace items</small></span><b>${count}</b></div>`).join('') || '<div class="empty-state">No catalog data yet.</div>';
+  return `${header('Marketplace admin', 'Platform overview, user activity, and order health.', '<button class="primary-button" type="button">Admin mode</button>')}
+    <section class="admin-hero">
+      <div>
+        <span class="eyebrow">ADMIN OVERVIEW</span>
+        <h3>Everything that matters is working from one place.</h3>
+      </div>
+      <div class="admin-quick-actions">
+        <button class="secondary-button" type="button">Users</button>
+        <button class="secondary-button" type="button">Orders</button>
+        <button class="primary-button" type="button">Payouts</button>
+      </div>
+    </section>
+    <div class="metric-grid admin-metric-grid">
+      ${metric('Total users', metrics.totalUsers)}
+      ${metric('Orders', metrics.totalOrders)}
+      ${metric('Bookings', metrics.totalBookings)}
+      ${metric('Revenue', formatMoney(metrics.totalRevenue), 'Paid marketplace orders')}
+      ${metric('Paid orders', metrics.paidOrders)}
+      ${metric('Pending payments', metrics.pendingPayments)}
+    </div>
+    <div class="dashboard-grid admin-grid">
+      <section class="panel admin-panel">
+        <header class="panel-heading"><h3>Recent users</h3></header>
+        <div class="panel-body admin-list">${userRows}</div>
+      </section>
+      <section class="panel admin-panel">
+        <header class="panel-heading"><h3>Recent orders</h3></header>
+        <div class="panel-body admin-list">${orderRows}</div>
+      </section>
+    </div>
+    <div class="dashboard-grid admin-grid">
+      <section class="panel admin-panel">
+        <header class="panel-heading"><h3>Recent bookings</h3></header>
+        <div class="panel-body admin-list">${bookingRows}</div>
+      </section>
+      <section class="panel admin-panel">
+        <header class="panel-heading"><h3>Platform health</h3></header>
+        <div class="panel-body admin-health">
+          <div class="compact-row"><span><strong>Marketplace listings</strong><small>Products plus service listings</small></span><b>${metrics.totalListings}</b></div>
+          <div class="compact-row"><span><strong>Platform payouts</strong><small>Recent payout records</small></span><b>${metrics.availablePayouts}</b></div>
+          <div class="compact-row"><span><strong>Active checkouts</strong><small>Orders awaiting payment confirmation</small></span><b>${metrics.pendingPayments}</b></div>
+        </div>
+      </section>
+    </div>
+    <div class="dashboard-grid admin-grid">
+      <section class="panel admin-panel">
+        <header class="panel-heading"><h3>Account breakdown</h3></header>
+        <div class="panel-body admin-health">${roleBreakdown}</div>
+      </section>
+      <section class="panel admin-panel">
+        <header class="panel-heading"><h3>Order status</h3></header>
+        <div class="panel-body admin-health">${orderBreakdown}</div>
+      </section>
+    </div>
+    <div class="dashboard-grid admin-grid">
+      <section class="panel admin-panel">
+        <header class="panel-heading"><h3>Booking status</h3></header>
+        <div class="panel-body admin-health">${bookingBreakdown}</div>
+      </section>
+      <section class="panel admin-panel">
+        <header class="panel-heading"><h3>Catalog activity</h3></header>
+        <div class="panel-body admin-health">${catalogBreakdown}</div>
+      </section>
+    </div>`;
+}
 function dispatchDashboard() {
   const { jobs, metrics, user } = dashboardData;
   if (selectedView === 'earnings') return `${header('Delivery earnings', 'Only completed rider jobs appear in delivery earnings.') }<div class="metric-grid">${metric('Completed deliveries', metrics.completedJobs)}${metric('Tracked rider earnings', formatMoney(metrics.grossEarnings), 'No rider payout fee configured')}</div>${moneyNote()}`;
@@ -141,6 +219,46 @@ function customerDashboard() {
   });
   return `${header(`Welcome, ${dashboardData.user.name.split(' ')[0]}`, 'Your Unishop orders and service bookings.')}${panel('Your orders', table(['Order', 'Products', 'Total', 'Payment and delivery'], customerOrderRows, 'Your orders will appear here.'))}${panel('Your service bookings', table(['Provider', 'Service', 'Preferred time', 'Status', 'Price', 'Next step'], bookingRowsForCustomer, 'Your service bookings will appear here.'))}${reviewForm}`;
 }
+function previewDashboardData() {
+  return {
+    role: 'admin',
+    user: { name: 'Ada Okon', email: 'ada@unishop.ng', role: 'admin', businessName: 'Marketplace admin', niche: 'Operations' },
+    metrics: {
+      totalUsers: 268,
+      totalOrders: 84,
+      totalBookings: 36,
+      totalRevenue: 4125000,
+      paidOrders: 59,
+      pendingPayments: 12,
+      totalListings: 182,
+      availablePayouts: 26
+    },
+    breakdown: {
+      roles: { customer: 136, seller: 42, provider: 31, dispatch: 20, admin: 3 },
+      orders: { paid: 59, pending: 12, processing: 8, failed: 5 },
+      bookings: { confirmed: 18, requested: 9, completed: 7, pending: 2 },
+      catalog: { products: 28, services: 54, reviews: 82, payouts: 18 }
+    },
+    users: [
+      { name: 'Ada Okon', role: 'admin', email: 'ada@unishop.ng' },
+      { name: 'Mfon Bassey', role: 'seller', email: 'mfon@unishop.ng' },
+      { name: 'Daniel Enang', role: 'provider', email: 'daniel@unishop.ng' },
+      { name: 'Udo Effiong', role: 'dispatch', email: 'udo@unishop.ng' },
+      { name: 'Sarah Akpan', role: 'customer', email: 'sarah@unishop.ng' }
+    ],
+    orders: [
+      { reference: 'UYO-2048', totalNaira: 28600, paymentStatus: 'paid', createdAt: '2026-10-01T09:00:00.000Z' },
+      { reference: 'UYO-2041', totalNaira: 14900, paymentStatus: 'pending', createdAt: '2026-10-02T12:30:00.000Z' },
+      { reference: 'UYO-2038', totalNaira: 38250, paymentStatus: 'paid', createdAt: '2026-10-03T07:10:00.000Z' },
+      { reference: 'UYO-2029', totalNaira: 21600, paymentStatus: 'processing', createdAt: '2026-10-04T08:40:00.000Z' }
+    ],
+    bookings: [
+      { provider: 'Nneoma Hair Studio', service: 'Hair styling', userId: 'Sarah Akpan', status: 'confirmed', amountNaira: 15000 },
+      { provider: 'CleanEase Uyo', service: 'Cleaning', userId: 'Grace Udo', status: 'pending', amountNaira: 12000 },
+      { provider: 'Aqua Fix', service: 'Plumbing', userId: 'Victor Etim', status: 'completed', amountNaira: 23500 }
+    ]
+  };
+}
 function renderDashboard() {
   document.querySelector('#workspace-role').textContent = roleLabels[dashboardData.role] || 'Marketplace';
   document.querySelector('#profile-name').textContent = dashboardData.user.name;
@@ -149,14 +267,29 @@ function renderDashboard() {
   document.querySelector('#welcome-title').textContent = `${roleLabels[dashboardData.role]} workspace`;
   document.querySelector('#today-label').textContent = new Intl.DateTimeFormat('en-NG', { dateStyle: 'full' }).format(new Date());
   const seller = dashboardData.role === 'seller';
-  document.querySelector('#listing-nav-label').textContent = seller ? 'Products' : dashboardData.role === 'provider' ? 'Service portfolio' : dashboardData.role === 'dispatch' ? 'Delivery area' : 'Orders';
-  document.querySelector('#activity-nav-label').textContent = dashboardData.role === 'provider' ? 'Bookings & reviews' : dashboardData.role === 'dispatch' ? 'Delivery jobs' : dashboardData.role === 'seller' ? 'Orders' : 'Bookings';
-  workspace.innerHTML = dashboardData.role === 'provider' ? providerDashboard() : seller ? sellerDashboard() : dashboardData.role === 'dispatch' ? dispatchDashboard() : customerDashboard();
-    populatePayoutBanks();
+  document.querySelector('#listing-nav-label').textContent = seller ? 'Products' : dashboardData.role === 'provider' ? 'Service portfolio' : dashboardData.role === 'dispatch' ? 'Delivery area' : dashboardData.role === 'admin' ? 'Marketplace' : 'Orders';
+  document.querySelector('#activity-nav-label').textContent = dashboardData.role === 'provider' ? 'Bookings & reviews' : dashboardData.role === 'dispatch' ? 'Delivery jobs' : dashboardData.role === 'seller' ? 'Orders' : dashboardData.role === 'admin' ? 'Operations' : 'Bookings';
+  workspace.innerHTML = dashboardData.role === 'admin'
+    ? adminDashboard()
+    : dashboardData.role === 'provider'
+      ? providerDashboard()
+      : seller ? sellerDashboard() : dashboardData.role === 'dispatch' ? dispatchDashboard() : customerDashboard();
+  populatePayoutBanks();
   document.querySelectorAll('[data-view]').forEach((link) => link.classList.toggle('active', link.dataset.view === selectedView));
 }
 async function refreshDashboard() {
-  dashboardData = await api('/api/dashboard');
+  try {
+    dashboardData = await api('/api/dashboard');
+  } catch (error) {
+    dashboardData = previewDashboardData();
+    const toast = document.querySelector('#workspace-toast');
+    if (toast) {
+      toast.textContent = 'Preview mode: showing a live admin layout demo.';
+      toast.classList.add('visible');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('visible'), 3200);
+    }
+  }
   renderDashboard();
 }
 async function uploadFiles(files) {

@@ -5,20 +5,96 @@ import crypto, { randomBytes, scrypt as scryptCallback, timingSafeEqual } from '
 import { promisify } from 'util';
 import dotenv from 'dotenv';
 import multer from 'multer';
+import bcrypt from 'bcrypt';
+import helmet from 'helmet';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
+import { z } from 'zod';
 
 dotenv.config();
 
 const app = express();
-const bcrypt = require('bcryptjs') as {
-  hash: (password: string, rounds: number) => Promise<string>;
-  compare: (password: string, hash: string) => Promise<boolean>;
-};
 const scrypt = promisify(scryptCallback);
-const roles = ['customer', 'seller', 'provider', 'dispatch'] as const;
+const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string };
-type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[] };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; };
+type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[] };
 type ApiError = Error & { status?: number };
+const accessTokenCookieName = 'unishop-access';
+const refreshTokenCookieName = 'unishop-refresh';
+const loginAttempts = new Map<string, { count: number; lockUntil: number }>();
+const deleteHtmlTags = /<[^>]*>/g;
+const corporateFrontendDomains = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://localhost:3000',
+  'https://localhost:3001'
+].filter(Boolean) as string[];
+const registerSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9._-]+$/),
+  email: z.string().trim().email().max(254),
+  password: z.string().min(10).max(128),
+  role: z.enum(roles),
+  businessName: z.string().trim().min(2).max(120).optional(),
+  niche: z.string().trim().max(80).optional()
+});
+const loginSchema = z.object({
+  username: z.string().trim().min(3).max(30),
+  password: z.string().min(10).max(128)
+});
+const sanitizeText = (value: unknown, fallback = '') => {
+  if (typeof value !== 'string') return fallback;
+  return value.replace(deleteHtmlTags, '').trim().slice(0, 2000);
+};
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+function issueSignedToken(user: User, type: 'access' | 'refresh') {
+  const expiresIn = type === 'access' ? '15m' : '7d';
+  return jwt.sign({ sub: user.id, role: user.role, type }, jwtSecret, { expiresIn });
+}
+function setAuthCookies(response: Response, accessToken: string, refreshToken?: string) {
+  const secureCookie = process.env.NODE_ENV === 'production';
+  response.cookie(accessTokenCookieName, accessToken, { httpOnly: true, secure: secureCookie, sameSite: 'lax', maxAge: 15 * 60 * 1000 });
+  if (refreshToken) {
+    response.cookie(refreshTokenCookieName, refreshToken, { httpOnly: true, secure: secureCookie, sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000 });
+  }
+}
+function getTokenFromRequest(request: Request) {
+  const cookieToken = request.cookies?.[accessTokenCookieName];
+  if (cookieToken) return cookieToken;
+  return request.get('authorization')?.replace(/^Bearer\s+/i, '');
+}
+function getLoginFailureKey(username: string) {
+  return username.trim().toLowerCase();
+}
+function isLoginLocked(username: string) {
+  const key = getLoginFailureKey(username);
+  const current = loginAttempts.get(key);
+  if (!current) return false;
+  if (current.lockUntil > Date.now()) return true;
+  loginAttempts.delete(key);
+  return false;
+}
+function recordFailedLogin(username: string) {
+  const key = getLoginFailureKey(username);
+  const current = loginAttempts.get(key) || { count: 0, lockUntil: 0 };
+  const updated = { count: current.count + 1, lockUntil: current.count + 1 >= 5 ? Date.now() + 15 * 60 * 1000 : 0 };
+  loginAttempts.set(key, updated);
+  return updated;
+}
+function clearLoginFailure(username: string) {
+  loginAttempts.delete(getLoginFailureKey(username));
+}
+function requireAdmin(request: Request): User {
+  const user = requireUser(request);
+  if (user.role !== 'admin') fail(403, 'Admin access is required.');
+  return user;
+}
 
 const catalog = [
   { id: 'linen-set', name: 'Everyday linen set', seller: 'Sunday Studio, Uyo', category: 'Home', price: 28500, image: 'photo-1616486338812-3dadae4b4ace' },
@@ -89,10 +165,10 @@ if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || !proces
 function loadState(): MarketplaceState {
   try {
     const parsed = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [] };
+    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [], auditLogs: parsed.auditLogs || [] };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    return { users: [], orders: [], bookings: [], serviceListings: [], sellerProducts: [], reviews: [], payouts: [] };
+    return { users: [], orders: [], bookings: [], serviceListings: [], sellerProducts: [], reviews: [], payouts: [], auditLogs: [] };
   }
 }
 
@@ -126,33 +202,35 @@ function legacyUsername(user: User) {
 }
 
 function tokenFor(user: User) {
-  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-  const payload = Buffer.from(JSON.stringify({ sub: user.id, role: user.role, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 })).toString('base64url');
-  const content = `${header}.${payload}`;
-  return `${content}.${crypto.createHmac('sha256', jwtSecret).update(content).digest('base64url')}`;
+  return issueSignedToken(user, 'access');
+}
+
+function refreshTokenFor(user: User) {
+  return issueSignedToken(user, 'refresh');
 }
 
 function authenticatedUser(request: Request): User | undefined {
-  const token = request.get('authorization')?.replace(/^Bearer\s+/i, '');
+  const token = getTokenFromRequest(request);
   if (!token) return undefined;
-  const parts = token.split('.');
-  if (parts.length !== 3) return undefined;
-  const content = `${parts[0]}.${parts[1]}`;
-  const expected = crypto.createHmac('sha256', jwtSecret).update(content).digest();
-  let actual: Buffer;
-  try { actual = Buffer.from(parts[2], 'base64url'); } catch { return undefined; }
-  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return undefined;
   try {
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
-    if (payload.exp < Date.now() / 1000) return undefined;
+    const payload = jwt.verify(token, jwtSecret) as { sub: string; type?: 'access' | 'refresh'; role?: Role };
+    if (payload.type && payload.type !== 'access') return undefined;
     return state.users.find((user) => user.id === payload.sub);
-  } catch { return undefined; }
+  } catch {
+    return undefined;
+  }
 }
 
 function requireUser(request: Request): User {
   const user = authenticatedUser(request);
   if (!user) fail(401, 'Sign in to continue.');
   return user;
+}
+
+function auditAction(action: string, actorId: string | undefined, details: Record<string, unknown> = {}) {
+  state.auditLogs = state.auditLogs || [];
+  state.auditLogs.push({ id: randomBytes(8).toString('hex'), createdAt: new Date().toISOString(), action, actorId, details });
+  saveState();
 }
 
 function safeOrder(order: any) {
@@ -259,6 +337,50 @@ function updatePayoutFromTransfer(payout: any, transfer: any) {
 }
 
 app.disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'https://images.unsplash.com', 'https://images.pexels.com'],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'", 'https://api.paystack.co'],
+      objectSrc: ["'none'"]
+    }
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  frameguard: { action: 'deny' },
+  noSniff: true,
+  xssFilter: true
+}));
+app.use(cors({
+  origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
+    if (!origin || corporateFrontendDomains.includes(origin)) return callback(null, true);
+    return callback(new Error('Origin not allowed by CORS policy.'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(cookieParser());
+app.use(express.json({ limit: '100kb' }));
+app.use((request: Request, response: Response, next: NextFunction) => {
+  if (process.env.NODE_ENV === 'production' && !request.secure && request.get('x-forwarded-proto') !== 'https') {
+    return response.redirect(`https://${request.get('host')}${request.originalUrl}`);
+  }
+  response.setHeader('Cache-Control', 'no-store');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+});
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: (_request, response) => response.status(429).json({ error: 'Too many failed login attempts. Please try again in 15 minutes.' })
+});
+app.use('/api/auth/login', authRateLimiter);
 app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '100kb' }), async (request: Request, response: Response) => {
   if (!paystackSecret) return response.sendStatus(503);
   const signature = request.get('x-paystack-signature') || '';
@@ -287,7 +409,14 @@ app.use(express.json({ limit: '100kb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/uploads', express.static(uploadDirectory, { fallthrough: false, maxAge: '1d' }));
 
+app.get('/admin', (_request, response) => response.redirect('/dashboard.html'));
+app.get('/dashboard', (_request, response) => response.redirect('/dashboard.html'));
+
 app.get('/api/health', (_request, response) => response.json({ status: 'ok', payments: paystackSecret ? 'configured' : 'not-configured' }));
+app.get('/api/admin/overview', (request, response) => {
+  const user = requireAdmin(request);
+  response.json({ user: cleanUser(user), metrics: { totalUsers: state.users.length, totalOrders: state.orders.length, totalBookings: state.bookings.length, totalRevenue: state.orders.filter((order) => order.paymentStatus === 'paid').reduce((sum, order) => sum + Number(order.totalNaira || 0), 0), auditEntries: state.auditLogs.length } });
+});
 app.get('/api/payout/banks', asyncRoute(async (request, response) => {
   const user = requireUser(request);
   if (!['seller', 'provider', 'dispatch'].includes(user.role)) fail(403, 'Payout accounts are only available to marketplace earners.');
@@ -439,6 +568,60 @@ app.get('/api/dashboard', (request: Request, response: Response) => {
     });
     return response.json({ role: user.role, user: cleanUser(user), jobs: riderJobs, ...payoutMetrics, metrics: { availableJobs: jobs.filter((order) => !order.dispatchRiderId).length, activeJobs: jobs.filter((order) => order.dispatchRiderId === user.id && order.deliveryStatus !== 'delivered').length, completedJobs: completed.length, grossEarnings: earnings, ...payoutMetrics } });
   }
+  if (user.role === 'admin') {
+    const paidOrders = state.orders.filter((order) => order.paymentStatus === 'paid');
+    const totalRevenue = paidOrders.reduce((sum, order) => sum + Number(order.totalNaira || 0), 0);
+    const totalUsers = state.users.length;
+    const totalListings = state.serviceListings.length + state.sellerProducts.length;
+    const roleBreakdown = { customer: 0, seller: 0, provider: 0, dispatch: 0, admin: 0 };
+    state.users.forEach((member) => { if (roleBreakdown[member.role] !== undefined) roleBreakdown[member.role] += 1; });
+    const orderBreakdown = state.orders.reduce((summary: Record<string, number>, order) => {
+      const status = order.paymentStatus || 'unknown';
+      summary[status] = (summary[status] || 0) + 1;
+      return summary;
+    }, {});
+    const bookingBreakdown = state.bookings.reduce((summary: Record<string, number>, booking) => {
+      const status = booking.status || 'unknown';
+      summary[status] = (summary[status] || 0) + 1;
+      return summary;
+    }, {});
+    const payoutBreakdown = state.payouts.reduce((summary: Record<string, number>, payout) => {
+      const status = payout.status || 'unknown';
+      summary[status] = (summary[status] || 0) + 1;
+      return summary;
+    }, {});
+    const catalogBreakdown = {
+      products: state.sellerProducts.length,
+      services: state.serviceListings.length,
+      reviews: state.reviews.length,
+      payouts: state.payouts.length
+    };
+    return response.json({
+      role: user.role,
+      user: cleanUser(user),
+      metrics: {
+        totalUsers,
+        totalOrders: state.orders.length,
+        totalBookings: state.bookings.length,
+        totalListings,
+        totalRevenue,
+        paidOrders: paidOrders.length,
+        pendingPayments: state.orders.filter((order) => ['pending', 'initialization-failed'].includes(order.paymentStatus)).length,
+        availablePayouts: state.payouts.filter((payout) => ['success', 'pending', 'otp-required', 'needs-review'].includes(payout.status)).length
+      },
+      breakdown: {
+        roles: roleBreakdown,
+        orders: orderBreakdown,
+        bookings: bookingBreakdown,
+        payouts: payoutBreakdown,
+        catalog: catalogBreakdown
+      },
+      users: state.users.slice(-10).map(cleanUser),
+      orders: state.orders.slice(-10).map(safeOrder),
+      bookings: state.bookings.slice(-10),
+      payouts: state.payouts.slice(-10)
+    });
+  }
   return response.json({ role: user.role, user: cleanUser(user), orders: state.orders.filter((order) => order.userId === user.id).map(safeOrder), bookings: state.bookings.filter((booking) => booking.userId === user.id) });
 });
 
@@ -549,33 +732,97 @@ app.patch('/api/dispatch/jobs/:reference', (request: Request, response: Response
 });
 
 app.post('/api/auth/register', asyncRoute(async (request: Request, response: Response) => {
-  const { name, username, email, password, role, businessName, niche } = request.body || {};
-  if (typeof name !== 'string' || name.trim().length < 2 || name.length > 100) fail(400, 'Enter your full name.');
-  if (typeof username !== 'string' || !/^[a-zA-Z0-9._-]{3,30}$/.test(username.trim())) fail(400, 'Choose a username with 3–30 letters, numbers, dots, underscores or hyphens.');
-  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) fail(400, 'Enter a valid email address.');
-  if (typeof password !== 'string' || password.length < 10 || password.length > 128) fail(400, 'Use a password with at least 10 characters.');
-  if (!roles.includes(role)) fail(400, 'Choose a valid account type.');
-  if (role === 'provider' && !serviceNiches.includes(niche)) fail(400, 'Choose an available service niche.');
-  if (state.users.some((user) => (user.username || legacyUsername(user)).toLowerCase() === username.trim().toLowerCase())) fail(409, 'That username is already taken.');
-  if (state.users.some((user) => user.email.toLowerCase() === email.toLowerCase() && user.role === role)) fail(409, 'This email already has an account for that role. Choose another role or sign in.');
-  if (role !== 'customer' && (typeof businessName !== 'string' || businessName.trim().length < 2)) fail(400, 'Enter your shop, service or delivery area name.');
+  const parsed = registerSchema.safeParse(request.body || {});
+  if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
+  const { name, username, email, password, role, businessName, niche } = parsed.data;
+  const sanitizedName = sanitizeText(name, '');
+  const sanitizedUsername = sanitizeText(username, '').toLowerCase();
+  const sanitizedEmail = sanitizeText(email, '').toLowerCase();
+  const sanitizedBusiness = businessName ? sanitizeText(businessName, '') : undefined;
+  const sanitizedNiche = niche ? sanitizeText(niche, '') : undefined;
+  if (role === 'provider' && !serviceNiches.includes(sanitizedNiche || '')) fail(400, 'Choose an available service niche.');
+  if (state.users.some((user) => (user.username || legacyUsername(user)).toLowerCase() === sanitizedUsername)) fail(409, 'That username is already taken.');
+  if (state.users.some((user) => user.email.toLowerCase() === sanitizedEmail && user.role === role)) fail(409, 'This email already has an account for that role. Choose another role or sign in.');
+  if (role !== 'customer' && role !== 'admin' && (!sanitizedBusiness || sanitizedBusiness.length < 2)) fail(400, 'Enter your shop, service or delivery area name.');
+  const autoVerifyEmail = process.env.NODE_ENV === 'test' || process.env.AUTO_VERIFY_EMAIL === 'true';
+  const otpCode = autoVerifyEmail ? undefined : generateOtp();
   const user: User = {
-    id: randomBytes(16).toString('hex'), name: name.trim(), username: username.trim().toLowerCase(), email: email.trim().toLowerCase(), role,
-    businessName: typeof businessName === 'string' ? businessName.trim() : undefined,
-    niche: role === 'provider' ? niche : undefined,
-    passwordHash: await bcrypt.hash(password, 12), createdAt: new Date().toISOString()
+    id: randomBytes(16).toString('hex'),
+    name: sanitizedName,
+    username: sanitizedUsername,
+    email: sanitizedEmail,
+    role,
+    businessName: sanitizedBusiness,
+    niche: role === 'provider' ? sanitizedNiche : undefined,
+    passwordHash: await bcrypt.hash(password, 12),
+    createdAt: new Date().toISOString(),
+    emailVerified: autoVerifyEmail,
+    otpCode,
+    otpExpiresAt: autoVerifyEmail ? undefined : Date.now() + 10 * 60 * 1000
   };
   state.users.push(user);
   saveState();
-  response.status(201).json({ token: tokenFor(user), user: cleanUser(user) });
+  const accessToken = tokenFor(user);
+  const refreshToken = refreshTokenFor(user);
+  setAuthCookies(response, accessToken, refreshToken);
+  response.status(201).json({ token: accessToken, refreshToken, user: cleanUser(user), emailVerificationRequired: !user.emailVerified });
+}));
+
+app.post('/api/auth/send-otp', asyncRoute(async (request: Request, response: Response) => {
+  const target = typeof request.body?.email === 'string' ? request.body.email : typeof request.body?.username === 'string' ? request.body.username : '';
+  const user = state.users.find((item) => item.email.toLowerCase() === target.toLowerCase() || (item.username || legacyUsername(item)).toLowerCase() === target.toLowerCase());
+  if (!user) fail(404, 'No matching account was found.');
+  const otpCode = generateOtp();
+  user.otpCode = otpCode;
+  user.otpExpiresAt = Date.now() + 10 * 60 * 1000;
+  saveState();
+  auditAction('otp.sent', user.id, { email: user.email, requestedBy: 'self' });
+  response.json({ message: 'A one-time code has been sent to your email address.', otpCode: process.env.NODE_ENV === 'test' ? otpCode : undefined });
+}));
+
+app.post('/api/auth/verify-otp', asyncRoute(async (request: Request, response: Response) => {
+  const { email, otp } = request.body || {};
+  if (typeof email !== 'string' || typeof otp !== 'string') fail(400, 'Enter your email and one-time code.');
+  const user = state.users.find((item) => item.email.toLowerCase() === email.toLowerCase());
+  if (!user || !user.otpCode || !user.otpExpiresAt || Date.now() > user.otpExpiresAt) fail(400, 'The OTP is invalid or has expired.');
+  if (user.otpCode !== otp.trim()) fail(400, 'The one-time code is incorrect.');
+  user.emailVerified = true;
+  user.otpCode = undefined;
+  user.otpExpiresAt = undefined;
+  saveState();
+  auditAction('otp.verified', user.id, { email: user.email });
+  response.json({ message: 'Email verified successfully.', user: cleanUser(user) });
 }));
 
 app.post('/api/auth/login', asyncRoute(async (request: Request, response: Response) => {
-  const { username, password } = request.body || {};
-  if (typeof username !== 'string' || typeof password !== 'string') fail(400, 'Enter your username and password.');
-  const user = state.users.find((item) => (item.username || legacyUsername(item)).toLowerCase() === username.trim().toLowerCase());
-  if (!user || !await bcrypt.compare(password, user.passwordHash)) fail(401, 'Username or password is incorrect.');
-  response.json({ token: tokenFor(user), user: cleanUser(user) });
+  const parsed = loginSchema.safeParse(request.body || {});
+  if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
+  const { username, password } = parsed.data;
+  const normalizedUsername = sanitizeText(username, '').toLowerCase();
+  const user = state.users.find((item) => (item.username || legacyUsername(item)).toLowerCase() === normalizedUsername);
+  if (isLoginLocked(normalizedUsername)) fail(429, 'Too many failed login attempts. Please try again in 15 minutes.');
+  if (!user) {
+    const failedAttempt = recordFailedLogin(normalizedUsername);
+    if (failedAttempt.lockUntil > Date.now()) fail(429, 'Too many failed login attempts. Please try again in 15 minutes.');
+    fail(401, 'Username or password is incorrect.');
+  }
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+  if (!passwordMatches) {
+    const failedAttempt = recordFailedLogin(normalizedUsername);
+    auditAction('login.failed', user.id, { username: normalizedUsername, reason: 'invalid_password' });
+    if (failedAttempt.lockUntil > Date.now()) fail(429, 'Too many failed login attempts. Please try again in 15 minutes.');
+    fail(401, 'Username or password is incorrect.');
+  }
+  if (!user.emailVerified && process.env.NODE_ENV !== 'test' && process.env.AUTO_VERIFY_EMAIL !== 'true') {
+    fail(403, 'Verify your email with the one-time code before logging in.');
+  }
+  clearLoginFailure(normalizedUsername);
+  user.lastLoginAt = new Date().toISOString();
+  saveState();
+  const accessToken = tokenFor(user);
+  const refreshToken = refreshTokenFor(user);
+  setAuthCookies(response, accessToken, refreshToken);
+  response.json({ token: accessToken, refreshToken, user: cleanUser(user) });
 }));
 
 app.get('/api/me', (request: Request, response: Response) => response.json({ user: cleanUser(requireUser(request)) }));
@@ -603,8 +850,11 @@ app.post('/api/bookings', (request: Request, response: Response) => {
 
 app.post('/api/payments/initialize', asyncRoute(async (request: Request, response: Response) => {
   if (!paystackSecret) fail(503, 'Online payments are temporarily unavailable. Please try again later.');
-  const { email, items, customer, delivery, bookingId } = request.body || {};
+  const { email, items, customer, delivery, bookingId, idempotencyKey } = request.body || {};
   const user = authenticatedUser(request);
+  const resolvedIdempotencyKey = typeof idempotencyKey === 'string' && idempotencyKey.trim() ? idempotencyKey.trim() : `pay-${Date.now()}-${randomBytes(8).toString('hex')}`;
+  const existingOrder = state.orders.find((order) => order.userId === user?.id && order.idempotencyKey === resolvedIdempotencyKey && order.paymentStatus !== 'failed');
+  if (existingOrder) return response.status(200).json({ reference: existingOrder.reference, authorizationUrl: existingOrder.authorizationUrl, order: safeOrder(existingOrder) });
   let orderItems: any[] = [];
   let settlementLines: any[] = [];
   let booking: any;
@@ -625,7 +875,7 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     if (providerNetNaira < 0) fail(400, 'The service price must cover its ₦500 dispatch contribution and Unishop commission.');
     settlementLines = booking.providerUserId ? [{ userId: booking.providerUserId, role: 'provider', subtotalNaira: serviceSubtotalNaira, commissionNaira, dispatchContributionNaira, netNaira: providerNetNaira }] : [];
     totalNaira = serviceSubtotalNaira + 500;
-    orderItems = [{ productId: booking.providerId, name: booking.service, seller: booking.provider, unitPrice: totalNaira, quantity: 1, lineTotal: totalNaira, service: true }];
+    orderItems = [{ productId: booking.providerId, name: booking.service, seller: booking.provider, sellerUserId: booking.providerUserId, unitPrice: serviceSubtotalNaira, quantity: 1, lineTotal: totalNaira, service: true }];
     customerName = user.name;
     phone = '';
     address = '';
@@ -637,12 +887,22 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     if (!Array.isArray(items) || items.length < 1 || items.length > 50) fail(400, 'Your bag is empty or invalid.');
     if (!customer || typeof customer.name !== 'string' || customer.name.trim().length < 2 || typeof customer.phone !== 'string' || customer.phone.trim().length < 7) fail(400, 'Enter your name and phone number.');
     if (!delivery || typeof delivery.address !== 'string' || delivery.address.trim().length < 5 || typeof delivery.neighbourhood !== 'string' || delivery.neighbourhood.trim().length < 2) fail(400, 'Enter your Uyo delivery address and neighbourhood.');
-    orderItems = items.map((item: any) => {
+    const serverItems = items.map((item: any) => {
       const product = catalog.find((entry) => entry.id === item.id) || state.sellerProducts.find((entry) => entry.id === item.id);
       const quantity = Number(item.quantity);
       if (!product || !Number.isInteger(quantity) || quantity < 1 || quantity > 10) fail(400, 'Your bag contains an invalid product or quantity.');
-      return { productId: product.id, name: product.name, seller: product.seller || product.businessName, sellerUserId: product.userId, unitPrice: product.price, quantity, lineTotal: product.price * quantity };
+      return { product, quantity };
     });
+    orderItems = serverItems.map(({ product, quantity }) => ({
+      productId: product.id,
+      name: product.name,
+      seller: product.seller || product.businessName,
+      sellerUserId: product.userId,
+      unitPrice: product.price,
+      quantity,
+      lineTotal: product.price * quantity,
+      service: false
+    }));
     settlementLines = sellerSettlementLines(orderItems);
     totalNaira = orderItems.reduce((sum: number, item: any) => sum + item.lineTotal, 0) + 500;
     customerName = customer.name.trim();
@@ -653,14 +913,31 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
   }
   const reference = `UNI-${Date.now()}-${randomBytes(6).toString('hex')}`;
   const order = {
-    id: randomBytes(12).toString('hex'), reference, type: booking ? 'service' : 'product', bookingId: booking?.id, userId: user?.id, email: receiptEmail,
-    customerName, phone, address, neighbourhood,
-    items: orderItems, totalNaira, dispatchFeeNaira: booking ? 0 : 500,
+    id: randomBytes(12).toString('hex'),
+    reference,
+    type: booking ? 'service' : 'product',
+    bookingId: booking?.id,
+    userId: user?.id,
+    email: receiptEmail,
+    customerName,
+    phone,
+    address,
+    neighbourhood,
+    items: orderItems,
+    totalNaira,
+    dispatchFeeNaira: booking ? 0 : 500,
     customerDispatchFeeNaira: booking ? 500 : 0,
     sellerDispatchContributionNaira: settlementLines.reduce((sum, line) => sum + line.dispatchContributionNaira, 0),
     riderSettlementNaira: booking ? 0 : 500 + settlementLines.reduce((sum, line) => sum + line.dispatchContributionNaira, 0),
-    settlementLines, settlementStatus: 'held', amountKobo: totalNaira * 100, currency: 'NGN', paymentStatus: 'pending', orderStatus: 'awaiting-payment',
-    authorizationUrl: undefined as string | undefined, createdAt: new Date().toISOString()
+    settlementLines,
+    settlementStatus: 'held',
+    amountKobo: totalNaira * 100,
+    currency: 'NGN',
+    paymentStatus: 'pending',
+    orderStatus: 'awaiting-payment',
+    authorizationUrl: undefined as string | undefined,
+    idempotencyKey: resolvedIdempotencyKey,
+    createdAt: new Date().toISOString()
   };
   state.orders.push(order);
   saveState();

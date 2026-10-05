@@ -179,7 +179,7 @@ function openBooking(providerId) {
   document.querySelector('#booking-form input').focus();
 }
 
-const authRoleNames = { customer: 'Customer', seller: 'Seller', provider: 'Service provider', dispatch: 'Dispatch rider' };
+const authRoleNames = { customer: 'Customer', seller: 'Vendors and Brands', provider: 'Service provider', dispatch: 'Dispatch rider', admin: 'Admin' };
 const authBackdrop = document.querySelector('#auth-backdrop');
 const authForm = document.querySelector('#auth-form');
 authForm.autocomplete = 'off';
@@ -205,6 +205,11 @@ function updateAuthForm() {
   document.querySelector('.auth-niche-field').hidden = !registering || selectedAuthRole !== 'provider';
   document.querySelector('.business-prompt').textContent = selectedAuthRole === 'dispatch' ? 'Preferred delivery area' : 'Shop or service name';
   authForm.elements.business.placeholder = selectedAuthRole === 'dispatch' ? 'e.g. Ewet Housing, Uyo' : 'Name customers will see';
+  if (selectedAuthRole === 'admin') {
+    authForm.elements.username.placeholder = 'admin_uyo';
+  } else {
+    authForm.elements.username.placeholder = 'e.g. ada_uyo';
+  }
   authForm.elements.name.required = registering;
   authForm.elements.email.required = registering;
   authForm.elements.username.required = true;
