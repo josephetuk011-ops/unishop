@@ -106,11 +106,11 @@ function openProductDetail(productId) {
   const product = products.find((item) => item.id === productId);
   if (!product) return;
   const media = document.querySelector('#detail-media');
-  media.innerHTML = `<img class="detail-image" src="${imageUrl(product.image, 1200)}" alt="${product.name}">${product.video ? `<video class="detail-video" src="${imageUrl(product.video)}" controls playsinline preload="metadata" aria-label="Seller video showing ${product.name}"></video>` : ''}`;
+  media.innerHTML = `<img class="detail-image" src="${imageUrl(product.image, 1200)}" alt="${product.name}">${product.video ? `<video class="detail-video" src="${imageUrl(product.video)}" controls playsinline preload="metadata" aria-label="Vendor or brand video showing ${product.name}"></video>` : ''}`;
   document.querySelector('#detail-category').textContent = `${product.category} · UYO MARKETPLACE`;
   document.querySelector('#product-detail-title').textContent = product.name;
   document.querySelector('#detail-rating').innerHTML = product.rating ? `<strong>★ ${product.rating}</strong> <span>${product.reviews || 0} customer ratings</span>` : '<span>New listing · No ratings yet</span>';
-  document.querySelector('#detail-seller').textContent = `Sold by ${product.seller}`;
+  document.querySelector('#detail-seller').textContent = `From ${product.seller}`;
   const description = product.description || ({
     'linen-set': 'A breathable everyday linen set from an independent Uyo home studio.',
     crossbody: 'A soft everyday crossbody bag from a local fashion label.',
@@ -120,10 +120,10 @@ function openProductDetail(productId) {
     'woven-tote': 'A sturdy woven tote made for market runs and everyday carry.',
     'skin-kit': 'A gentle skincare starter bundle from a local beauty brand.',
     speaker: 'A compact wireless speaker for bringing music along.'
-  }[product.id] || 'A locally listed product from a seller in Uyo. Contact the seller for more details.');
+  }[product.id] || 'A locally listed product from a vendor or brand in Uyo. Contact the vendor or brand for more details.');
   document.querySelector('#detail-description').textContent = description;
   document.querySelector('#detail-price').textContent = formatPrice(product.price);
-  document.querySelector('#detail-video-note').textContent = product.video ? 'Seller-uploaded product video' : 'No product video uploaded by this seller.';
+  document.querySelector('#detail-video-note').textContent = product.video ? 'Vendor- or brand-uploaded product video' : 'No product video uploaded by this vendor or brand.';
   document.querySelector('#detail-add-to-bag').dataset.add = product.id;
   document.querySelector('#product-detail-backdrop').classList.add('open');
   document.body.style.overflow = 'hidden';
