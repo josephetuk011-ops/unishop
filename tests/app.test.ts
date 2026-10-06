@@ -42,6 +42,51 @@ describe('E-Marketplace Application', () => {
     expect(dashboardResponse.body.breakdown).toHaveProperty('orders');
   });
 
+  it('should allow customer signup with an empty optional business name', async () => {
+    const username = `customer${Date.now()}`;
+    const registration = await request(app).post('/api/auth/register').send({
+      name: 'Customer User',
+      username,
+      email: `${username}@example.com`,
+      password: 'customerpassword123',
+      role: 'customer',
+      businessName: ''
+    });
+
+    expect(registration.status).toBe(201);
+    expect(registration.body.emailVerificationRequired).toBe(false);
+    const login = await request(app).post('/api/auth/login').send({ username, password: 'customerpassword123' });
+    expect(login.status).toBe(200);
+    expect(login.body.user.role).toBe('customer');
+  });
+
+  it.each([
+    { role: 'seller', businessName: 'Test Shop' },
+    { role: 'provider', businessName: 'Test Service', niche: 'Barbing' },
+    { role: 'dispatch', businessName: 'Ewet Housing' }
+  ])('should sign in a $role account and return its dashboard data', async ({ role, businessName, niche }) => {
+    const username = `${role}${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const registration = await request(app).post('/api/auth/register').send({
+      name: 'Marketplace User',
+      username,
+      email: `${username}@example.com`,
+      password: 'marketplacepassword123',
+      role,
+      businessName,
+      niche
+    });
+
+    expect(registration.status).toBe(201);
+    const login = await request(app).post('/api/auth/login').send({ username, password: 'marketplacepassword123' });
+    expect(login.status).toBe(200);
+    expect(login.body.user.role).toBe(role);
+
+    const dashboard = await request(app).get('/api/dashboard').set('Authorization', `Bearer ${login.body.token}`);
+    expect(dashboard.status).toBe(200);
+    expect(dashboard.body.role).toBe(role);
+    expect(dashboard.body).toHaveProperty(role === 'seller' ? 'products' : role === 'provider' ? 'listings' : 'jobs');
+  });
+
   it('should lock repeated login failures and set a secure auth cookie', async () => {
     const username = `secure-${Date.now()}`;
     const email = `secure-${Date.now()}@example.com`;

@@ -526,17 +526,18 @@ authForm.addEventListener('submit', async (event) => {
   submit.disabled = true;
   try {
     const registering = selectedAuthMode === 'register';
+    const credentials = { username: form.elements.username.value, password: form.elements.password.value };
+    if (registering) {
+      credentials.name = form.elements.name.value;
+      credentials.email = form.elements.email.value;
+      credentials.role = selectedAuthRole;
+      const businessName = form.elements.business.value.trim();
+      if (businessName) credentials.businessName = businessName;
+      if (selectedAuthRole === 'provider') credentials.niche = form.elements.niche.value;
+    }
     const result = await apiRequest(`/api/auth/${registering ? 'register' : 'login'}`, {
       method: 'POST',
-      body: JSON.stringify({
-        name: form.elements.name.value,
-        username: form.elements.username.value,
-        email: form.elements.email.value,
-        password: form.elements.password.value,
-        role: selectedAuthRole,
-        businessName: form.elements.business.value,
-        niche: form.elements.niche.value
-      })
+      body: JSON.stringify(credentials)
     });
     sessionToken = result.token;
     currentUser = result.user;
@@ -546,7 +547,7 @@ authForm.addEventListener('submit', async (event) => {
     showToast(`Welcome${registering ? ' to Unishop' : ' back'}, ${currentUser.name}.`);
     document.querySelector('.account-button span:last-child').textContent = currentUser.name.split(' ')[0];
     form.reset();
-    if (currentUser.role !== 'customer') window.location.assign('/dashboard.html');
+    if (['seller', 'provider', 'dispatch', 'admin'].includes(currentUser.role)) window.location.assign('/dashboard.html');
   } catch (error) {
     showToast(error.message);
   } finally {

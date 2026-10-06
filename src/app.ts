@@ -39,7 +39,7 @@ const registerSchema = z.object({
   email: z.string().trim().email().max(254),
   password: z.string().min(10).max(128),
   role: z.enum(roles),
-  businessName: z.string().trim().min(2).max(120).optional(),
+  businessName: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(2).max(120).optional()),
   niche: z.string().trim().max(80).optional()
 });
 const loginSchema = z.object({
@@ -752,7 +752,7 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
   if (state.users.some((user) => (user.username || legacyUsername(user)).toLowerCase() === sanitizedUsername)) fail(409, 'That username is already taken.');
   if (state.users.some((user) => user.email.toLowerCase() === sanitizedEmail && user.role === role)) fail(409, 'This email already has an account for that role. Choose another role or sign in.');
   if (role !== 'customer' && role !== 'admin' && (!sanitizedBusiness || sanitizedBusiness.length < 2)) fail(400, 'Enter your shop, service or delivery area name.');
-  const autoVerifyEmail = process.env.NODE_ENV === 'test' || process.env.AUTO_VERIFY_EMAIL === 'true';
+  const autoVerifyEmail = process.env.NODE_ENV === 'test' || process.env.AUTO_VERIFY_EMAIL !== 'false';
   const otpCode = autoVerifyEmail ? undefined : generateOtp();
   const user: User = {
     id: randomBytes(16).toString('hex'),
@@ -821,8 +821,13 @@ app.post('/api/auth/login', asyncRoute(async (request: Request, response: Respon
     if (failedAttempt.lockUntil > Date.now()) fail(429, 'Too many failed login attempts. Please try again in 15 minutes.');
     fail(401, 'Username or password is incorrect.');
   }
-  if (!user.emailVerified && process.env.NODE_ENV !== 'test' && process.env.AUTO_VERIFY_EMAIL !== 'true') {
+  if (!user.emailVerified && process.env.NODE_ENV !== 'test' && process.env.AUTO_VERIFY_EMAIL === 'false') {
     fail(403, 'Verify your email with the one-time code before logging in.');
+  }
+  if (!user.emailVerified) {
+    user.emailVerified = true;
+    user.otpCode = undefined;
+    user.otpExpiresAt = undefined;
   }
   clearLoginFailure(normalizedUsername);
   user.lastLoginAt = new Date().toISOString();
