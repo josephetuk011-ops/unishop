@@ -342,3 +342,26 @@ body.dark-theme .detail-buy-row { border-color: #303a4b; }
   .detail-copy h2 { padding-right: 28px; font-size: 22px; }
   .detail-description { min-height: 0; margin-bottom: 14px; }
 }
+
+.shorts-section { margin-block: 54px 70px; }
+.shorts-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 18px; }
+.shorts-heading .eyebrow { margin: 0 0 8px; color: #bf4e36; font-size: 10px; font-weight: 700; }
+.shorts-heading h2 { margin: 0; color: #172957; font: 700 29px/1.15 var(--display); }
+.shorts-heading p:last-child { margin: 8px 0 0; color: #697694; font-size: 12px; }
+.shorts-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.short-card { min-width: 0; overflow: hidden; border: 1px solid #e1e7f2; border-radius: 4px; background: #fff; }
+.short-card video { display: block; width: 100%; aspect-ratio: 9 / 12; object-fit: cover; background: #182231; }
+.short-card-copy { padding: 12px; }
+.short-card-source { overflow: hidden; margin: 0 0 5px; color: #697694; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.short-card h3 { overflow: hidden; margin: 0; color: #172957; font-size: 13px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.short-card-action { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; }
+.short-card-action strong { color: #172957; font-size: 13px; }
+.short-card-action .add-button,.short-card-action .book-button { display: inline-flex; align-items: center; justify-content: center; width: auto; height: 34px; min-height: 34px; padding: 0 11px; border: 1px solid #214bc4; border-radius: 3px; background: #214bc4; color: #fff; font-size: 10px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.short-card-action .add-button:hover,.short-card-action .book-button:hover { background: #17399d; }
+.shorts-empty { grid-column: 1 / -1; margin: 0; padding: 26px 0; border-top: 1px solid #e1e7f2; color: #697694; font-size: 12px; }
+body.dark-theme .shorts-heading h2,body.dark-theme .short-card h3,body.dark-theme .short-card-action strong { color: #f1f4fa; }
+body.dark-theme .shorts-heading p:last-child,body.dark-theme .short-card-source,body.dark-theme .shorts-empty { color: #a7b3c8; }
+body.dark-theme .short-card { border-color: #303a4b; background: #182231; }
+body.dark-theme .shorts-empty { border-color: #303a4b; }
+@media(max-width:1050px) { .shorts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media(max-width:760px) { .shorts-section { margin-block: 38px 50px; } .shorts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; } .short-card-copy { padding: 9px; } .short-card-action { align-items: stretch; flex-direction: column; } .short-card-action button { width: 100%; } }

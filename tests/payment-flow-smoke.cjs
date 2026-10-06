@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+process.env.NODE_ENV = 'test';
 process.env.PAYSTACK_SECRET_KEY = 'sk_test_mock_only';
 process.env.JWT_SECRET = 'local-integration-signing-secret';
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'unishop-payment-flow-'));
@@ -91,18 +92,30 @@ const server = app.listen(0, async () => {
     });
     assert.equal(seller.status, 201);
     assert.equal((await send('POST', '/api/auth/login', { username: 'uyoseller', password: 'A-secure-test-password' })).data.user.role, 'seller');
-    const uploadMedia = async (route, field, filename, mimeType, bytes, token) => {
+    const uploadMedia = async (route, field, filename, mimeType, bytes, token, fields = {}) => {
       const form = new FormData();
+      Object.entries(fields).forEach(([key, value]) => form.append(key, String(value)));
       form.append(field, new Blob([bytes], { type: mimeType }), filename);
       const result = await nativeFetch(`${baseUrl}${route}`, { method: 'POST', headers: { authorization: `Bearer ${token}` }, body: form });
       return { status: result.status, data: await result.json() };
     };
+    const longProviderVideo = await uploadMedia('/api/uploads/short-video', 'video', 'long.mp4', 'video/mp4', Buffer.from('mock-mp4-content'), provider.data.token, { duration: 31 });
+    assert.equal(longProviderVideo.status, 400);
+    const providerVideo = await uploadMedia('/api/uploads/short-video', 'video', 'service.mp4', 'video/mp4', Buffer.from('mock-mp4-content'), provider.data.token, { duration: 30 });
+    assert.equal(providerVideo.status, 201);
+    const shortService = await send('POST', '/api/provider/listings', {
+      niche: 'Barbing', title: 'Short video barbing service', description: 'A barbing service listing with a short video.', price: 18000, portfolio: ['/uploads/test-portfolio.jpg'], video: providerVideo.data.video, videoDuration: providerVideo.data.videoDuration
+    }, provider.data.token);
+    assert.equal(shortService.status, 201);
+    assert.equal(shortService.data.listing.video, providerVideo.data.video);
     const uploadedImage = await uploadMedia('/api/uploads/portfolio', 'images', 'item.jpg', 'image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xd9]), seller.data.token);
     assert.equal(uploadedImage.status, 201);
-    const uploadedVideo = await uploadMedia('/api/uploads/product-video', 'video', 'item.mp4', 'video/mp4', Buffer.from('mock-mp4-content'), seller.data.token);
+    const longProductVideo = await uploadMedia('/api/uploads/short-video', 'video', 'long.mp4', 'video/mp4', Buffer.from('mock-mp4-content'), seller.data.token, { duration: 31 });
+    assert.equal(longProductVideo.status, 400);
+    const uploadedVideo = await uploadMedia('/api/uploads/short-video', 'video', 'item.mp4', 'video/mp4', Buffer.from('mock-mp4-content'), seller.data.token, { duration: 12 });
     assert.equal(uploadedVideo.status, 201);
     const sellerProduct = await send('POST', '/api/seller/products', {
-      name: 'Locally made tote', category: 'Fashion', description: 'A locally made woven market tote.', price: 12345, image: uploadedImage.data.images[0], video: uploadedVideo.data.video
+      name: 'Locally made tote', category: 'Fashion', description: 'A locally made woven market tote.', price: 12345, image: uploadedImage.data.images[0], video: uploadedVideo.data.video, videoDuration: uploadedVideo.data.videoDuration
     }, seller.data.token);
     assert.equal(sellerProduct.status, 201);
     assert.equal(sellerProduct.data.product.video, uploadedVideo.data.video);

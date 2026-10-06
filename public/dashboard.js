@@ -88,10 +88,10 @@ function providerDashboard() {
 }
 function serviceForm() {
   const options = roleNiches.map((niche) => `<option value="${escapeHtml(niche)}" ${dashboardData.user.niche === niche ? 'selected' : ''}>${escapeHtml(niche)}</option>`).join('');
-  return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><label class="form-field">Starting price (NGN)<input name="price" type="number" required min="500" step="100" placeholder="12000"></label><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 6 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
+  return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><label class="form-field">Starting price (NGN)<input name="price" type="number" required min="500" step="100" placeholder="12000"></label><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 6 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · MP4 or WebM · maximum 30 seconds.</span><input name="video" type="file" accept="video/mp4,video/webm"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerForm() {
-  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option>Home</option><option>Fashion</option><option>Beauty</option><option>Tech</option><option>Food</option></select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><label class="form-field">Product photo<input name="image" type="file" accept="image/jpeg,image/png,image/webp" required></label><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product video <span class="form-help">Optional · MP4 or WebM · up to 40 MB. Buyers can play it on the product page.</span><input name="video" type="file" accept="video/mp4,video/webm"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
+  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option>Home</option><option>Fashion</option><option>Beauty</option><option>Tech</option><option>Food</option></select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><label class="form-field">Product photo<input name="image" type="file" accept="image/jpeg,image/png,image/webp" required></label><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · MP4 or WebM · maximum 30 seconds.</span><input name="video" type="file" accept="video/mp4,video/webm"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerDashboard() {
   const { products, orders, metrics, user } = dashboardData;
@@ -297,11 +297,26 @@ async function uploadFiles(files) {
   [...files].forEach((file) => body.append('images', file));
   return api('/api/uploads/portfolio', { method: 'POST', body });
 }
-async function uploadProductVideo(file) {
+async function uploadShortVideo(file) {
   if (!file) return undefined;
+  const videoDuration = await new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    const source = URL.createObjectURL(file);
+    const finish = (callback, value) => { URL.revokeObjectURL(source); callback(value); };
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      const duration = Number(video.duration);
+      if (!Number.isFinite(duration) || duration <= 0) return finish(reject, new Error('Could not read this video duration. Try another MP4 or WebM video.'));
+      if (duration > 30) return finish(reject, new Error('Videos must be 30 seconds or shorter.'));
+      finish(resolve, duration);
+    };
+    video.onerror = () => finish(reject, new Error('Could not read this video. Try an MP4 or WebM file.'));
+    video.src = source;
+  });
   const body = new FormData();
+  body.append('duration', String(videoDuration));
   body.append('video', file);
-  return api('/api/uploads/product-video', { method: 'POST', body });
+  return api('/api/uploads/short-video', { method: 'POST', body });
 }
 
 if (localStorage.getItem('unishop-theme') === 'dark') document.body.classList.add('dark');
@@ -420,7 +435,8 @@ document.addEventListener('submit', async (event) => {
     button.disabled = true;
     try {
       const upload = await uploadFiles(form.elements.images.files);
-      await api('/api/provider/listings', { method: 'POST', body: JSON.stringify({ niche: form.elements.niche.value, title: form.elements.title.value, description: form.elements.description.value, price: form.elements.price.value, portfolio: upload.images }) });
+      const uploadedVideo = await uploadShortVideo(form.elements.video.files[0]);
+      await api('/api/provider/listings', { method: 'POST', body: JSON.stringify({ niche: form.elements.niche.value, title: form.elements.title.value, description: form.elements.description.value, price: form.elements.price.value, portfolio: upload.images, video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
       selectedView = 'listings';
       await refreshDashboard();
       notify('Your service and work photos are published.');
@@ -434,8 +450,8 @@ document.addEventListener('submit', async (event) => {
     button.disabled = true;
     try {
       const uploaded = await uploadFiles([form.elements.image.files[0]]);
-      const uploadedVideo = await uploadProductVideo(form.elements.video.files[0]);
-      await api('/api/seller/products', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value, category: form.elements.category.value, description: form.elements.description.value, price: form.elements.price.value, image: uploaded.images[0], video: uploadedVideo?.video }) });
+      const uploadedVideo = await uploadShortVideo(form.elements.video.files[0]);
+      await api('/api/seller/products', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value, category: form.elements.category.value, description: form.elements.description.value, price: form.elements.price.value, image: uploaded.images[0], video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
       selectedView = 'listings';
       await refreshDashboard();
       notify('Product published to your catalogue.');

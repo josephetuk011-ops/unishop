@@ -36,6 +36,12 @@ let currentUser = readStorage('unishop-user', null);
 let toastTimer;
 
 const productGrid = document.querySelector('#product-grid');
+const shortsSection = document.createElement('section');
+shortsSection.className = 'shorts-section page-width';
+shortsSection.id = 'products-shorts';
+shortsSection.innerHTML = '<div class="shorts-heading"><div><p class="eyebrow">QUICK LOOKS FROM UYO</p><h2>Products Shorts</h2><p>Watch a short, then add it to your bag or book a local pro.</p></div></div><div class="shorts-grid" id="shorts-grid"></div>';
+document.querySelector('#join').before(shortsSection);
+const shortsGrid = document.querySelector('#shorts-grid');
 const cartDrawer = document.querySelector('#cart-drawer');
 const backdrop = document.querySelector('#drawer-backdrop');
 const toastNode = document.querySelector('#toast');
@@ -65,6 +71,23 @@ function showToast(message) {
   toastNode.classList.add('visible');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toastNode.classList.remove('visible'), 2400);
+}
+
+function escapeShortText(value = '') {
+  return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+}
+
+function renderShorts() {
+  const shortProducts = products.filter((product) => product.video && Number(product.videoDuration) > 0 && Number(product.videoDuration) <= 30);
+  const shortServices = providers.filter((provider) => provider.video && Number(provider.videoDuration) > 0 && Number(provider.videoDuration) <= 30);
+  const productCards = shortProducts.map((product) => `<article class="short-card"><video src="${escapeShortText(product.video)}" poster="${escapeShortText(imageUrl(product.image, 640))}" controls muted playsinline preload="metadata"></video><div class="short-card-copy"><p class="short-card-source">${escapeShortText(product.seller || 'Local vendor')}</p><h3>${escapeShortText(product.name)}</h3><div class="short-card-action"><strong>${formatPrice(Number(product.price))}</strong><button class="add-button" data-short-add="${escapeShortText(product.id)}">Add to bag</button></div></div></article>`);
+  const serviceCards = shortServices.map((provider) => {
+    const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
+    const title = provider.title || provider.trade || provider.niche || 'Local service';
+    return `<article class="short-card"><video src="${escapeShortText(provider.video)}" poster="${escapeShortText(imageUrl(image, 640))}" controls muted playsinline preload="metadata"></video><div class="short-card-copy"><p class="short-card-source">${escapeShortText(provider.provider || provider.name || 'Service provider')}</p><h3>${escapeShortText(title)}</h3><div class="short-card-action"><strong>${formatPrice(Number(provider.price))}</strong><button class="book-button" data-short-book="${escapeShortText(provider.id)}">Book</button></div></div></article>`;
+  });
+  const cards = [...productCards, ...serviceCards];
+  shortsGrid.innerHTML = cards.join('') || '<p class="shorts-empty">No product or service shorts yet.</p>';
 }
 
 function renderProducts() {
@@ -396,6 +419,13 @@ productGrid.addEventListener('click', (event) => {
   if (productDetailButton) openProductDetail(productDetailButton.dataset.productDetail);
 });
 
+shortsGrid.addEventListener('click', (event) => {
+  const addButton = event.target.closest('[data-short-add]');
+  const bookButton = event.target.closest('[data-short-book]');
+  if (addButton) addToCart(addButton.dataset.shortAdd);
+  if (bookButton) openBooking(bookButton.dataset.shortBook);
+});
+
 document.querySelector('#cart-items').addEventListener('click', (event) => {
   const button = event.target.closest('[data-quantity]');
   if (!button) return;
@@ -539,6 +569,7 @@ document.addEventListener('keydown', (event) => {
 
 renderProducts();
 renderProviders();
+renderShorts();
 renderCart();
 document.querySelectorAll('a[href="#services"], a[href="#providers"]').forEach((link) => link.setAttribute('href', '#products'));
 document.querySelector('#services')?.remove();
@@ -548,6 +579,7 @@ fetch('/api/services').then((response) => response.ok ? response.json() : []).th
   if (Array.isArray(data) && data.length) {
     providers.splice(0, providers.length, ...data);
     renderProviders(activeNiche);
+    renderShorts();
   }
 }).catch(() => {});
 fetch('/api/products').then((response) => response.ok ? response.json() : []).then((data) => {
@@ -555,6 +587,7 @@ fetch('/api/products').then((response) => response.ok ? response.json() : []).th
     const known = new Set(products.map((product) => product.id));
     data.forEach((product) => { if (!known.has(product.id)) products.push({ ...product, badge: 'UYO SHOP' }); });
     renderProducts();
+    renderShorts();
     renderCart();
   }
 }).catch(() => {});

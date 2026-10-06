@@ -519,13 +519,18 @@ app.post('/api/uploads/portfolio', (request: Request, response: Response, next: 
   });
 });
 
-app.post('/api/uploads/product-video', (request: Request, response: Response) => {
+app.post(['/api/uploads/short-video', '/api/uploads/product-video'], (request: Request, response: Response) => {
   const user = authenticatedUser(request);
-  if (!user || user.role !== 'seller') return response.status(403).json({ error: 'Sign in as a seller to upload product videos.' });
+  if (!user || !['seller', 'provider'].includes(user.role)) return response.status(403).json({ error: 'Sign in as a vendor or service provider to upload short videos.' });
   productVideoUpload.single('video')(request, response, (error: any) => {
-    if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Product video must be 40 MB or smaller.' : error.message || 'The video could not be uploaded.' });
-    if (!request.file) return response.status(400).json({ error: 'Choose an MP4 or WebM product video.' });
-    response.status(201).json({ video: `/uploads/${request.file.filename}` });
+    if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Short video must be 40 MB or smaller.' : error.message || 'The video could not be uploaded.' });
+    if (!request.file) return response.status(400).json({ error: 'Choose an MP4 or WebM short video.' });
+    const videoDuration = Number(request.body?.duration);
+    if (!Number.isFinite(videoDuration) || videoDuration <= 0 || videoDuration > 30) {
+      fs.unlink(request.file.path, () => {});
+      return response.status(400).json({ error: 'Short video must be 30 seconds or less.' });
+    }
+    response.status(201).json({ video: `/uploads/${request.file.filename}`, videoDuration });
   });
 });
 
@@ -628,13 +633,15 @@ app.get('/api/dashboard', (request: Request, response: Response) => {
 app.post('/api/provider/listings', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (user.role !== 'provider') fail(403, 'Use a service provider account to create a service listing.');
-  const { niche, title, description, price, portfolio } = request.body || {};
+  const { niche, title, description, price, portfolio, video, videoDuration } = request.body || {};
   if (!serviceNiches.includes(niche)) fail(400, 'Choose one of the available service niches.');
   if (typeof title !== 'string' || title.trim().length < 3 || title.length > 100) fail(400, 'Enter a service title.');
   if (typeof description !== 'string' || description.trim().length < 10 || description.length > 1500) fail(400, 'Describe your service in at least 10 characters.');
   if (!Number.isInteger(Number(price)) || Number(price) < 500 || Number(price) > 100000000) fail(400, 'Enter a valid price in Naira.');
   if (!Array.isArray(portfolio) || portfolio.length < 1 || portfolio.length > 6 || portfolio.some((image) => typeof image !== 'string' || !/^\/uploads\/[\w.-]+$/.test(image))) fail(400, 'Upload 1 to 6 work photos first.');
-  const listing = { id: randomBytes(12).toString('hex'), userId: user.id, provider: user.name, businessName: user.businessName, niche, title: title.trim(), description: description.trim(), price: Number(price), neighbourhood: 'Uyo, Akwa Ibom', portfolio, createdAt: new Date().toISOString() };
+  if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.(mp4|webm)$/.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
+  if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
+  const listing = { id: randomBytes(12).toString('hex'), userId: user.id, provider: user.name, businessName: user.businessName, niche, title: title.trim(), description: description.trim(), price: Number(price), neighbourhood: 'Uyo, Akwa Ibom', portfolio, video, videoDuration: video === undefined ? undefined : Number(videoDuration), createdAt: new Date().toISOString() };
   state.serviceListings.push(listing);
   user.niche = niche;
   saveState();
@@ -644,14 +651,15 @@ app.post('/api/provider/listings', (request: Request, response: Response) => {
 app.post('/api/seller/products', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (user.role !== 'seller') fail(403, 'Use a seller account to add a product.');
-  const { name, category, description, price, image, video } = request.body || {};
+  const { name, category, description, price, image, video, videoDuration } = request.body || {};
   if (typeof name !== 'string' || name.trim().length < 3 || name.length > 100) fail(400, 'Enter a product name.');
   if (!['Home', 'Fashion', 'Beauty', 'Tech', 'Food'].includes(category)) fail(400, 'Choose a valid product category.');
   if (typeof description !== 'string' || description.trim().length < 5) fail(400, 'Add a short product description.');
   if (!Number.isInteger(Number(price)) || Number(price) < 100 || Number(price) > 100000000) fail(400, 'Enter a valid price in Naira.');
   if (typeof image !== 'string' || !/^\/uploads\/[\w.-]+$/.test(image)) fail(400, 'Upload a product image first.');
-  if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.(mp4|webm)$/.test(video))) fail(400, 'Upload a valid MP4 or WebM product video.');
-  const product = { id: `seller-${randomBytes(10).toString('hex')}`, userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), image, video, rating: null, reviews: 0, createdAt: new Date().toISOString() };
+  if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.(mp4|webm)$/.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
+  if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
+  const product = { id: `seller-${randomBytes(10).toString('hex')}`, userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), image, video, videoDuration: video === undefined ? undefined : Number(videoDuration), rating: null, reviews: 0, createdAt: new Date().toISOString() };
   state.sellerProducts.push(product);
   saveState();
   response.status(201).json({ product });
