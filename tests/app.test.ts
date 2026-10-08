@@ -12,35 +12,98 @@ describe('E-Marketplace Application', () => {
     expect(response.status).toBe(404);
   });
 
-  it('should expose the admin dashboard on a dedicated admin link', async () => {
-    const response = await request(app).get('/admin');
-    expect(response.status).toBe(302);
-    expect(response.headers.location).toBe('/dashboard.html');
+  it('should redirect the marketplace admin link to the separate console', async () => {
+    const previousAdminUrl = process.env.ADMIN_APP_URL;
+    process.env.ADMIN_APP_URL = 'https://admin.example.test';
+    try {
+      const response = await request(app).get('/admin');
+      expect(response.status).toBe(302);
+      expect(response.headers.location).toBe('https://admin.example.test');
+    } finally {
+      if (previousAdminUrl === undefined) delete process.env.ADMIN_APP_URL;
+      else process.env.ADMIN_APP_URL = previousAdminUrl;
+    }
   });
 
-  it('should allow an admin account and expose the admin dashboard', async () => {
-    const email = `admin-${Date.now()}@example.com`;
-    const registerResponse = await request(app).post('/api/auth/register').send({
-      name: 'Admin User',
-      username: `admin${Date.now()}`,
-      email,
-      password: 'adminpassword123',
-      role: 'admin'
-    });
+  it('gates admin access by password and audits reversible provider suspension', async () => {
+    const previousAdminPassword = process.env.ADMIN_PASSWORD;
+    process.env.ADMIN_PASSWORD = 'test-only-admin-password';
+    try {
+      const username = `provider${Date.now()}`;
+      const registration = await request(app).post('/api/auth/register').send({
+        name: 'Marketplace Provider',
+        username,
+        email: `${username}@example.com`,
+        password: 'providerpassword123',
+        role: 'provider',
+        businessName: 'Test Barbershop',
+        niche: 'Barbing'
+      });
+      expect(registration.status).toBe(201);
+      const profile = await request(app).patch('/api/profile')
+        .set('Authorization', `Bearer ${registration.body.token}`)
+        .send({ name: 'Marketplace Provider', businessName: 'Test Barbershop', position: 'Owner and barber', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'I offer reliable barber appointments for homes and businesses across Uyo.', profileImage: '/uploads/test-profile.jpg' });
+      expect(profile.status).toBe(200);
+      expect(profile.body.complete).toBe(true);
+      const publicAdminRegistration = await request(app).post('/api/auth/register').send({
+        name: 'Unapproved Admin',
+        username: `unapproved${Date.now()}`,
+        email: `unapproved${Date.now()}@example.com`,
+        password: 'unapprovedpassword123',
+        role: 'admin'
+      });
+      expect(publicAdminRegistration.status).toBe(400);
 
-    expect(registerResponse.status).toBe(201);
-    expect(registerResponse.body.user.role).toBe('admin');
+      const listing = await request(app).post('/api/provider/listings')
+        .set('Authorization', `Bearer ${registration.body.token}`)
+        .send({ niche: 'Barbing', title: 'Uyo home barber', description: 'Barber appointments in Uyo homes.', price: 5000, portfolio: ['/uploads/test-barber.jpg'] });
+      expect(listing.status).toBe(201);
 
-    const dashboardResponse = await request(app)
-      .get('/api/dashboard')
-      .set('Authorization', `Bearer ${registerResponse.body.token}`);
+      const noPassword = await request(app).get('/api/admin/dashboard');
+      expect(noPassword.status).toBe(401);
+      const invalidPassword = await request(app).post('/api/admin/login').send({ password: 'wrong-password' });
+      expect(invalidPassword.status).toBe(401);
+      const adminLogin = await request(app).post('/api/admin/login').send({ password: process.env.ADMIN_PASSWORD });
+      expect(adminLogin.status).toBe(200);
+      const adminToken = adminLogin.body.token;
+      const dashboard = await request(app).get('/api/admin/dashboard').set('Authorization', `Bearer ${adminToken}`);
+      expect(dashboard.status).toBe(200);
+      expect(dashboard.body.metrics.totalUsers).toBeGreaterThan(0);
 
-    expect(dashboardResponse.status).toBe(200);
-    expect(dashboardResponse.body.role).toBe('admin');
-    expect(dashboardResponse.body.metrics).toHaveProperty('totalUsers');
-    expect(dashboardResponse.body.breakdown).toHaveProperty('roles');
-    expect(dashboardResponse.body.breakdown).toHaveProperty('orders');
-  });
+      const before = await request(app).get('/api/services');
+      expect(before.body.some((service: { id: string }) => service.id === listing.body.listing.id)).toBe(true);
+      const publicService = before.body.find((service: { id: string; providerProfile?: { aboutMe?: string; position?: string; placeOfOperation?: string } }) => service.id === listing.body.listing.id);
+      expect(publicService.providerProfile).toMatchObject({
+        aboutMe: 'I offer reliable barber appointments for homes and businesses across Uyo.',
+        position: 'Owner and barber',
+        placeOfOperation: 'Ewet Housing, Uyo'
+      });
+      const suspend = await request(app).patch(`/api/admin/users/${registration.body.user.id}/suspension`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ suspended: true, reason: 'Repeated customer safety reports' });
+      expect(suspend.status).toBe(200);
+      expect(suspend.body.user.suspendedAt).toBeTruthy();
+      expect((await request(app).get('/api/dashboard').set('Authorization', `Bearer ${registration.body.token}`)).status).toBe(401);
+      expect((await request(app).get('/api/services')).body.some((service: { id: string }) => service.id === listing.body.listing.id)).toBe(false);
+
+      const users = await request(app).get(`/api/admin/records?kind=users&search=${username}`).set('Authorization', `Bearer ${adminToken}`);
+      expect(users.body.total).toBe(1);
+      expect(users.body.records[0].suspensionReason).toBe('Repeated customer safety reports');
+      const audit = await request(app).get(`/api/admin/records?kind=audit&search=${registration.body.user.id}`).set('Authorization', `Bearer ${adminToken}`);
+      expect(audit.body.total).toBe(2);
+      expect(audit.body.records.map((entry: { action: string }) => entry.action)).toEqual(expect.arrayContaining(['profile.updated', 'account.suspended']));
+
+      const restore = await request(app).patch(`/api/admin/users/${registration.body.user.id}/suspension`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ suspended: false });
+      expect(restore.status).toBe(200);
+      expect((await request(app).get('/api/dashboard').set('Authorization', `Bearer ${registration.body.token}`)).status).toBe(200);
+      expect((await request(app).get('/api/services')).body.some((service: { id: string }) => service.id === listing.body.listing.id)).toBe(true);
+    } finally {
+      if (previousAdminPassword === undefined) delete process.env.ADMIN_PASSWORD;
+      else process.env.ADMIN_PASSWORD = previousAdminPassword;
+    }
+  }, 20000);
 
   it('should allow customer signup with an empty optional business name', async () => {
     const username = `customer${Date.now()}`;
@@ -85,6 +148,26 @@ describe('E-Marketplace Application', () => {
     expect(dashboard.status).toBe(200);
     expect(dashboard.body.role).toBe(role);
     expect(dashboard.body).toHaveProperty(role === 'seller' ? 'products' : role === 'provider' ? 'listings' : 'jobs');
+    const profile = await request(app).patch('/api/profile').set('Authorization', `Bearer ${login.body.token}`).send({
+      name: 'Marketplace User',
+      businessName,
+      position: 'Owner and operator',
+      placeOfOperation: 'Ewet Housing, Uyo',
+      aboutMe: 'Local marketplace business serving customers across Uyo.',
+      profileImage: '/uploads/marketplace-user.jpg'
+    });
+    expect(profile.status).toBe(200);
+    expect(profile.body.complete).toBe(true);
+    if (role === 'seller') {
+      const product = await request(app).post('/api/seller/products').set('Authorization', `Bearer ${login.body.token}`).send({
+        name: 'Test marketplace product', category: 'Home', description: 'A useful local marketplace item.', price: 1200, image: '/uploads/marketplace-product.jpg'
+      });
+      expect(product.status).toBe(201);
+      const publicProduct = await request(app).get('/api/products');
+      const listedProduct = publicProduct.body.find((item: { id: string; brandProfile?: { businessName?: string; position?: string } }) => item.id === product.body.product.id);
+      expect(listedProduct.brandProfile).toMatchObject({ businessName, position: 'Owner and operator' });
+      expect(listedProduct.brandProfile).not.toHaveProperty('email');
+    }
   });
 
   it('should lock repeated login failures and set a secure auth cookie', async () => {

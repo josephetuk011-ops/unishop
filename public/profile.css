@@ -1,0 +1,32 @@
+.profile-editor {
+  max-width: 820px;
+  border-top: 3px solid #2d916c;
+}
+
+.profile-editor .panel-body { padding: 22px; }
+.profile-editor .form-grid { gap: 15px; }
+.profile-editor .form-field textarea { min-height: 125px; line-height: 1.6; }
+
+.profile-photo-field input { padding: 10px; }
+
+.profile-image-preview {
+  width: 92px;
+  height: 92px;
+  margin-top: 7px;
+  border: 1px solid #dce3db;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #edf2e9;
+}
+
+.profile-editor .form-actions { justify-content: flex-start; }
+body.dark .profile-editor { border-color: var(--night-line); border-top-color: #2d916c; }
+body.dark .profile-image-preview { border-color: var(--night-line); }
+
+@media (max-width: 700px) {
+  .profile-editor .panel-body { padding: 14px; }
+  .profile-editor .form-grid { gap: 11px; }
+  .profile-image-preview { width: 76px; height: 76px; }
+}
+
+#profile-nav-link[hidden] { display: none; }

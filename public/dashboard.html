@@ -9,6 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/dashboard.css">
+  <link rel="stylesheet" href="/profile.css">
+  <link rel="stylesheet" href="/admin-dashboard.css">
   <script src="/dashboard.js" defer></script>
 </head>
 <body>
@@ -18,9 +20,10 @@
       <div class="workspace-context"><span class="context-dot"></span><span>Workspace<br><strong id="workspace-role">Loading</strong></span></div>
       <nav class="workspace-nav" aria-label="Workspace sections">
         <a class="active" href="#overview" data-view="overview"><span>▦</span> Overview</a>
+        <a href="#profile" data-view="profile" id="profile-nav-link"><span>◉</span> Profile</a>
         <a href="#listings" data-view="listings"><span>◇</span><span id="listing-nav-label">My listings</span></a>
         <a href="#activity" data-view="activity"><span>≡</span><span id="activity-nav-label">Activity</span></a>
-        <a href="#earnings" data-view="earnings"><span>₦</span> Earnings</a>
+        <a href="#earnings" data-view="earnings"><span>₦</span><span id="earnings-nav-label">Earnings</span></a>
       </nav>
       <div class="sidebar-bottom"><div class="profile-mini"><span class="profile-avatar" id="profile-initials">U</span><span><strong id="profile-name">Loading</strong><small id="profile-detail">Uyo, Akwa Ibom</small></span></div><button class="signout-button" id="signout-button">Sign out</button><a class="back-link" href="/">← Back to marketplace</a></div>
     </aside>

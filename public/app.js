@@ -134,6 +134,21 @@ function openProductDetail(productId) {
   document.querySelector('#product-detail-title').textContent = product.name;
   document.querySelector('#detail-rating').innerHTML = product.rating ? `<strong>★ ${product.rating}</strong> <span>${product.reviews || 0} customer ratings</span>` : '<span>New listing · No ratings yet</span>';
   document.querySelector('#detail-seller').textContent = `From ${product.seller}`;
+  const brandProfile = product.brandProfile;
+  const brandTrigger = document.querySelector('#detail-brand-trigger');
+  const brandCard = document.querySelector('#detail-brand-card');
+  brandTrigger.hidden = !brandProfile?.businessName;
+  brandTrigger.setAttribute('aria-expanded', 'false');
+  brandCard.hidden = true;
+  if (brandProfile?.businessName) {
+    const avatar = document.querySelector('#detail-brand-avatar');
+    avatar.src = brandProfile.profileImage ? imageUrl(brandProfile.profileImage, 120) : '';
+    avatar.alt = `${brandProfile.businessName} brand photo`;
+    document.querySelector('#detail-brand-name').textContent = brandProfile.businessName;
+    document.querySelector('#detail-brand-position').textContent = [brandProfile.name, brandProfile.position, brandProfile.role === 'seller' ? 'Vendor' : 'Service provider'].filter(Boolean).join(' · ');
+    document.querySelector('#detail-brand-about').textContent = brandProfile.aboutMe || 'Business profile coming soon.';
+    document.querySelector('#detail-brand-location').textContent = brandProfile.placeOfOperation || 'Uyo, Akwa Ibom';
+  }
   const description = product.description || ({
     'linen-set': 'A breathable everyday linen set from an independent Uyo home studio.',
     crossbody: 'A soft everyday crossbody bag from a local fashion label.',
@@ -202,7 +217,7 @@ function openBooking(providerId) {
   document.querySelector('#booking-form input').focus();
 }
 
-const authRoleNames = { customer: 'Customer', seller: 'Vendors and Brands', provider: 'Service provider', dispatch: 'Dispatch rider', admin: 'Admin' };
+const authRoleNames = { customer: 'Customer', seller: 'Vendors and Brands', provider: 'Service provider', dispatch: 'Dispatch rider' };
 const authBackdrop = document.querySelector('#auth-backdrop');
 const authForm = document.querySelector('#auth-form');
 authForm.autocomplete = 'off';
@@ -228,11 +243,7 @@ function updateAuthForm() {
   document.querySelector('.auth-niche-field').hidden = !registering || selectedAuthRole !== 'provider';
   document.querySelector('.business-prompt').textContent = selectedAuthRole === 'dispatch' ? 'Preferred delivery area' : 'Shop or service name';
   authForm.elements.business.placeholder = selectedAuthRole === 'dispatch' ? 'e.g. Ewet Housing, Uyo' : 'Name customers will see';
-  if (selectedAuthRole === 'admin') {
-    authForm.elements.username.placeholder = 'admin_uyo';
-  } else {
-    authForm.elements.username.placeholder = 'e.g. ada_uyo';
-  }
+  authForm.elements.username.placeholder = 'e.g. ada_uyo';
   authForm.elements.name.required = registering;
   authForm.elements.email.required = registering;
   authForm.elements.username.required = true;
@@ -456,6 +467,11 @@ function closeProductDetail() {
   document.body.style.overflow = '';
 }
 document.querySelector('.product-detail-close').addEventListener('click', closeProductDetail);
+document.querySelector('#detail-brand-trigger').addEventListener('click', (event) => {
+  const card = document.querySelector('#detail-brand-card');
+  card.hidden = !card.hidden;
+  event.currentTarget.setAttribute('aria-expanded', String(!card.hidden));
+});
 document.querySelector('#product-detail-backdrop').addEventListener('click', (event) => {
   if (event.target.id === 'product-detail-backdrop') closeProductDetail();
 });
@@ -547,7 +563,7 @@ authForm.addEventListener('submit', async (event) => {
     showToast(`Welcome${registering ? ' to Unishop' : ' back'}, ${currentUser.name}.`);
     document.querySelector('.account-button span:last-child').textContent = currentUser.name.split(' ')[0];
     form.reset();
-    if (['seller', 'provider', 'dispatch', 'admin'].includes(currentUser.role)) window.location.assign('/dashboard.html');
+    if (['seller', 'provider', 'dispatch'].includes(currentUser.role)) window.location.assign('/dashboard.html');
   } catch (error) {
     showToast(error.message);
   } finally {

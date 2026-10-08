@@ -311,6 +311,19 @@ body.dark-theme .announcement-close { color: #fff; }
 .detail-rating { display: flex; align-items: center; gap: 9px; margin-top: 14px; color: #687895; font-size: 11px; }
 .detail-rating strong { color: #9b6a00; font-size: 13px; }
 .detail-seller { margin: 17px 0 0; color: #53617c; font-size: 11px; font-weight: 700; }
+.detail-brand-trigger { width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 9px; border: 1px solid #e1e7f2; border-radius: 3px; background: #fbfcf9; text-align: left; cursor: pointer; }
+.detail-brand-trigger[hidden], .detail-brand-card[hidden] { display: none; }
+.detail-brand-trigger img { width: 38px; height: 38px; flex: 0 0 auto; border-radius: 50%; object-fit: cover; background: #e5eddf; }
+.detail-brand-trigger > span { min-width: 0; flex: 1; }
+.detail-brand-trigger strong, .detail-brand-trigger small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-brand-trigger strong { color: #18372e; font-size: 11px; }
+.detail-brand-trigger small { margin-top: 3px; color: #6e7b72; font-size: 9px; }
+.detail-brand-trigger > b { flex: 0 0 auto; color: #315b49; font-size: 9px; }
+.detail-brand-card { display: grid; gap: 10px; margin-top: 8px; padding: 12px; border-left: 3px solid #c96c3d; background: #f3f6ef; }
+.detail-brand-card p { margin: 0; color: #4d5d52; font-size: 10px; line-height: 1.65; }
+.detail-brand-card strong, .detail-brand-card small { display: block; }
+.detail-brand-card strong { color: #294538; font-size: 10px; }
+.detail-brand-card small { margin-top: 2px; color: #7b877e; font-size: 8px; }
 .detail-description { min-height: 56px; margin: 10px 0 22px; color: #697694; font-size: 12px; line-height: 1.65; }
 .detail-buy-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-top: 16px; border-top: 1px solid #e1e7f2; }
 .detail-buy-row strong { color: #172957; font: 700 23px var(--display); }
@@ -325,6 +338,11 @@ body.dark-theme .service-market-card .book-button { border-color: #3b485e; backg
 body.dark-theme .product-detail-close { background: rgba(24,34,49,.92); color: #eef3ff; }
 body.dark-theme .detail-copy h2,body.dark-theme .detail-buy-row strong { color: #f1f4fa; }
 body.dark-theme .detail-seller { color: #d0d8e7; }
+body.dark-theme .detail-brand-trigger { border-color: #303a4b; background: #202b3b; }
+body.dark-theme .detail-brand-trigger strong, body.dark-theme .detail-brand-card strong { color: #e7f0e5; }
+body.dark-theme .detail-brand-trigger small, body.dark-theme .detail-brand-card p, body.dark-theme .detail-brand-card small { color: #a9b7ad; }
+body.dark-theme .detail-brand-trigger > b { color: #a7d1b5; }
+body.dark-theme .detail-brand-card { background: #1e2c28; }
 body.dark-theme .detail-description,body.dark-theme .detail-rating,body.dark-theme .detail-video-note { color: #a7b3c8; }
 body.dark-theme .detail-buy-row { border-color: #303a4b; }
 @media(max-width:1050px) { .marketplace-niches { grid-template-columns: repeat(5,minmax(0,1fr)); } }

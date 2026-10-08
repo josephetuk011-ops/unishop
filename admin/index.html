@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#122623">
+  <title>Unishop Admin</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <main id="login-view" class="login-view">
+    <section class="login-panel" aria-labelledby="login-title">
+      <a class="brand-mark" href="/" aria-label="Unishop administration"><span class="brand-symbol">U</span><span>UNISHOP<small>MARKETPLACE ADMIN</small></span></a>
+      <p class="eyebrow">RESTRICTED ACCESS</p>
+      <h1 id="login-title">Admin sign in</h1>
+      <p class="login-copy">Use the private admin password configured for this deployment.</p>
+      <form id="login-form">
+        <label for="admin-password">Admin password</label>
+        <input id="admin-password" name="password" type="password" autocomplete="current-password" required minlength="10" autofocus>
+        <button class="button button-primary" type="submit">Continue <span aria-hidden="true">↗</span></button>
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+      </form>
+      <p class="login-foot">UNISHOP · UYO, AKWA IBOM</p>
+    </section>
+    <div class="login-visual" aria-hidden="true">
+      <div class="visual-mark">UYO<br><span>LOCAL<br>COMMERCE</span></div>
+      <div class="visual-caption"><span>MARKETPLACE OPERATIONS</span><strong>People, orders<br>and trust.</strong></div>
+      <div class="visual-index">01 <span>/</span> ADMIN</div>
+    </div>
+  </main>
+
+  <div id="app-view" class="app-view" hidden>
+    <aside class="sidebar">
+      <a class="brand-mark" href="#overview" data-view="overview"><span class="brand-symbol">U</span><span>UNISHOP<small>MARKETPLACE ADMIN</small></span></a>
+      <div class="workspace-tag"><span></span> PRIVATE WORKSPACE</div>
+      <nav class="side-nav" aria-label="Admin sections">
+        <button class="nav-link active" data-view="overview"><span>◫</span> Overview</button>
+        <button class="nav-link" data-view="users"><span>◉</span> Accounts <span class="nav-count" id="suspended-count">0</span></button>
+        <button class="nav-link" data-view="orders"><span>▤</span> Orders</button>
+        <button class="nav-link" data-view="bookings"><span>◇</span> Bookings</button>
+        <button class="nav-link" data-view="listings"><span>▧</span> Listings</button>
+        <button class="nav-link" data-view="payouts"><span>₦</span> Payouts</button>
+        <button class="nav-link" data-view="audit"><span>≡</span> Admin activity</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="admin-profile"><span class="admin-avatar">A</span><span><strong>Administrator</strong><small id="admin-username">Protected session</small></span></div>
+        <button id="signout-button" class="signout-button"><span>↗</span> Sign out</button>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div><p class="eyebrow">UNISHOP / OPERATIONS</p><h1 id="page-title">Marketplace overview</h1></div>
+        <div class="topbar-tools"><span id="last-updated" class="last-updated">Loading live records</span><button id="refresh-button" class="icon-button" type="button" aria-label="Refresh dashboard" title="Refresh dashboard">↻</button><button id="theme-button" class="icon-button" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">◐</button></div>
+      </header>
+      <div id="main-content" class="main-content" aria-live="polite"><div class="loading-line">Loading marketplace records…</div></div>
+      <footer class="main-footer"><span>UNISHOP ADMIN</span><span>Account actions are logged. Orders and payout history are retained.</span></footer>
+    </main>
+  </div>
+
+  <div id="moderation-dialog" class="dialog-backdrop" hidden>
+    <section class="dialog-panel" role="dialog" aria-modal="true" aria-labelledby="moderation-title">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Close">×</button>
+      <p class="eyebrow">ACCOUNT MODERATION</p>
+      <h2 id="moderation-title">Suspend account</h2>
+      <p id="moderation-description" class="dialog-copy"></p>
+      <form id="moderation-form">
+        <input type="hidden" name="userId">
+        <input type="hidden" name="suspended">
+        <label for="moderation-reason">Reason</label>
+        <textarea id="moderation-reason" name="reason" rows="4" maxlength="500" placeholder="Document the policy concern for the audit trail."></textarea>
+        <div class="dialog-actions"><button class="button button-secondary" type="button" data-close-dialog>Cancel</button><button id="moderation-submit" class="button button-danger" type="submit">Suspend account</button></div>
+      </form>
+    </section>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

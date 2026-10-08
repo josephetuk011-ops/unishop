@@ -18,8 +18,9 @@ dotenv.config();
 const app = express();
 const scrypt = promisify(scryptCallback);
 const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
+const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -38,7 +39,7 @@ const registerSchema = z.object({
   username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9._-]+$/),
   email: z.string().trim().email().max(254),
   password: z.string().min(10).max(128),
-  role: z.enum(roles),
+  role: z.enum(registrationRoles),
   businessName: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(2).max(120).optional()),
   niche: z.string().trim().max(80).optional()
 });
@@ -92,7 +93,7 @@ function clearLoginFailure(username: string) {
 }
 function requireAdmin(request: Request): User {
   const user = requireUser(request);
-  if (user.role !== 'admin') fail(403, 'Admin access is required.');
+  if (user.id !== adminIdentity.id) fail(403, 'Admin access is required.');
   return user;
 }
 
@@ -155,6 +156,7 @@ const productVideoUpload = multer({
   }
 });
 const jwtSecret = process.env.JWT_SECRET || 'unishop-development-only-change-this-secret';
+const adminIdentity: User = { id: 'railway-admin', name: 'Unishop Administrator', username: 'admin', email: 'admin@unishop.local', role: 'admin', passwordHash: '', createdAt: '2026-01-01T00:00:00.000Z' };
 const paystackSecret = process.env.PAYSTACK_SECRET_KEY || '';
 const callbackUrl = `${(process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000').replace(/\/$/, '')}/?payment=return`;
 
@@ -193,7 +195,17 @@ function asyncRoute(handler: (request: Request, response: Response) => Promise<u
 }
 
 function cleanUser(user: User) {
-  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, niche: user.niche, createdAt: user.createdAt };
+  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, niche: user.niche, createdAt: user.createdAt };
+}
+
+function publicBusinessProfile(userId: string | undefined) {
+  const user = state.users.find((member) => member.id === userId && !member.suspendedAt);
+  if (!user || !['seller', 'provider'].includes(user.role)) return undefined;
+  return { name: user.name, businessName: user.businessName || '', position: user.position || '', placeOfOperation: user.placeOfOperation || '', aboutMe: user.aboutMe || '', profileImage: user.profileImage || '', role: user.role };
+}
+
+function hasCompleteBusinessProfile(user: User) {
+  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/'));
 }
 
 function legacyUsername(user: User) {
@@ -215,7 +227,9 @@ function authenticatedUser(request: Request): User | undefined {
   try {
     const payload = jwt.verify(token, jwtSecret) as { sub: string; type?: 'access' | 'refresh'; role?: Role };
     if (payload.type && payload.type !== 'access') return undefined;
-    return state.users.find((user) => user.id === payload.sub);
+    if (payload.sub === adminIdentity.id && payload.role === 'admin') return adminIdentity;
+    const user = state.users.find((member) => member.id === payload.sub);
+    return !user || user.role === 'admin' || user.suspendedAt ? undefined : user;
   } catch {
     return undefined;
   }
@@ -231,6 +245,16 @@ function auditAction(action: string, actorId: string | undefined, details: Recor
   state.auditLogs = state.auditLogs || [];
   state.auditLogs.push({ id: randomBytes(8).toString('hex'), createdAt: new Date().toISOString(), action, actorId, details });
   saveState();
+}
+
+function isAccountSuspended(userId: string | undefined) {
+  return Boolean(userId && state.users.some((user) => user.id === userId && user.suspendedAt));
+}
+
+function matchesAdminPassword(supplied: string, expected: string) {
+  const suppliedDigest = crypto.createHash('sha256').update(supplied).digest();
+  const expectedDigest = crypto.createHash('sha256').update(expected).digest();
+  return timingSafeEqual(suppliedDigest, expectedDigest);
 }
 
 function safeOrder(order: any) {
@@ -341,7 +365,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'https://images.unsplash.com', 'https://images.pexels.com'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://images.unsplash.com', 'https://images.pexels.com'],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       connectSrc: ["'self'", 'https://api.paystack.co'],
@@ -363,7 +387,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(cookieParser());
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({
+  limit: '100kb',
+  verify: (request: Request, _response: Response, body: Buffer) => {
+    if (request.originalUrl === '/api/payments/webhook') (request as Request & { rawBody?: Buffer }).rawBody = Buffer.from(body);
+  }
+}));
 app.use((request: Request, response: Response, next: NextFunction) => {
   if (process.env.NODE_ENV === 'production' && !request.secure && request.get('x-forwarded-proto') !== 'https') {
     return response.redirect(`https://${request.get('host')}${request.originalUrl}`);
@@ -380,16 +409,27 @@ const authRateLimiter = rateLimit({
   skipSuccessfulRequests: true,
   handler: (_request, response) => response.status(429).json({ error: 'Too many failed login attempts. Please try again in 15 minutes.' })
 });
+const adminRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: (_request, response) => response.status(429).json({ error: 'Too many failed admin sign-in attempts. Please try again in 15 minutes.' })
+});
 app.use('/api/auth/login', authRateLimiter);
+app.use('/api/admin/login', adminRateLimiter);
 app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '100kb' }), async (request: Request, response: Response) => {
   if (!paystackSecret) return response.sendStatus(503);
+  const rawBody = (request as Request & { rawBody?: Buffer }).rawBody;
+  if (!rawBody) return response.sendStatus(400);
   const signature = request.get('x-paystack-signature') || '';
-  const expected = crypto.createHmac('sha512', paystackSecret).update(request.body as Buffer).digest();
+  const expected = crypto.createHmac('sha512', paystackSecret).update(rawBody).digest();
   let actual: Buffer;
   try { actual = Buffer.from(signature, 'hex'); } catch { return response.sendStatus(401); }
   if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return response.sendStatus(401);
   try {
-    const event = JSON.parse((request.body as Buffer).toString('utf8'));
+    const event = JSON.parse(rawBody.toString('utf8'));
     if (event.event === 'charge.success' && event.data?.reference) await completePayment(event.data.reference, event.data);
     if (['transfer.success', 'transfer.failed', 'transfer.reversed'].includes(event.event) && event.data?.reference) {
       const payout = state.payouts.find((item) => item.reference === event.data.reference);
@@ -405,14 +445,117 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit:
   }
 });
 
-app.use(express.json({ limit: '100kb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/uploads', express.static(uploadDirectory, { fallthrough: false, maxAge: '1d' }));
 
-app.get('/admin', (_request, response) => response.redirect('/dashboard.html'));
+app.get('/admin', (_request, response) => {
+  if (!process.env.ADMIN_APP_URL) return response.status(503).send('The separate Unishop admin console has not been configured yet.');
+  response.redirect(302, process.env.ADMIN_APP_URL);
+});
 app.get('/dashboard', (_request, response) => response.redirect('/dashboard.html'));
 
 app.get('/api/health', (_request, response) => response.json({ status: 'ok', payments: paystackSecret ? 'configured' : 'not-configured' }));
+app.post('/api/admin/login', (request: Request, response: Response) => {
+  const expectedPassword = process.env.ADMIN_PASSWORD;
+  const password = request.body?.password;
+  if (!expectedPassword) fail(503, 'Admin access is not configured.');
+  if (typeof password !== 'string' || password.length > 256 || !matchesAdminPassword(password, expectedPassword)) {
+    auditAction('admin.login.failed', undefined, { ip: request.ip });
+    fail(401, 'The admin password is incorrect.');
+  }
+  const token = tokenFor(adminIdentity);
+  auditAction('admin.login.succeeded', adminIdentity.id, { ip: request.ip });
+  response.json({ token, user: cleanUser(adminIdentity) });
+});
+app.get('/api/admin/dashboard', (request, response) => {
+  const admin = requireAdmin(request);
+  const nonAdminUsers = state.users.filter((user) => user.role !== 'admin');
+  const paidOrders = state.orders.filter((order) => order.paymentStatus === 'paid');
+  const activeListings = state.sellerProducts.filter((product) => !isAccountSuspended(product.userId)).length + state.serviceListings.filter((listing) => !isAccountSuspended(listing.userId)).length;
+  const roleCounts: Record<string, number> = { customer: 0, seller: 0, provider: 0, dispatch: 0 };
+  nonAdminUsers.forEach((user) => { roleCounts[user.role] = (roleCounts[user.role] || 0) + 1; });
+  const countBy = (records: any[], key: string) => records.reduce((counts: Record<string, number>, record) => {
+    const value = String(record[key] || 'unknown');
+    counts[value] = (counts[value] || 0) + 1;
+    return counts;
+  }, {});
+  response.json({
+    user: cleanUser(admin),
+    metrics: {
+      totalUsers: nonAdminUsers.length,
+      suspendedUsers: nonAdminUsers.filter((user) => user.suspendedAt).length,
+      totalOrders: state.orders.length,
+      paidOrders: paidOrders.length,
+      totalBookings: state.bookings.length,
+      totalRevenue: paidOrders.reduce((sum, order) => sum + Number(order.totalNaira || 0), 0),
+      totalListings: state.sellerProducts.length + state.serviceListings.length,
+      activeListings,
+      totalPayouts: state.payouts.length,
+      auditEntries: state.auditLogs.length,
+      pendingPayments: state.orders.filter((order) => ['pending', 'initialization-failed'].includes(order.paymentStatus)).length
+    },
+    breakdown: {
+      roles: roleCounts,
+      orders: countBy(state.orders, 'paymentStatus'),
+      bookings: countBy(state.bookings, 'status'),
+      payouts: countBy(state.payouts, 'status'),
+      catalog: { products: state.sellerProducts.length, services: state.serviceListings.length }
+    }
+  });
+});
+app.get('/api/admin/records', (request, response) => {
+  requireAdmin(request);
+  const kinds = ['users', 'orders', 'bookings', 'listings', 'payouts', 'audit'] as const;
+  const kind = request.query.kind;
+  if (typeof kind !== 'string' || !kinds.includes(kind as typeof kinds[number])) fail(400, 'Choose a valid admin record type.');
+  const limit = Math.min(100, Math.max(1, Number.parseInt(String(request.query.limit || '50'), 10) || 50));
+  const offset = Math.max(0, Number.parseInt(String(request.query.offset || '0'), 10) || 0);
+  const search = typeof request.query.search === 'string' ? request.query.search.trim().toLowerCase().slice(0, 100) : '';
+  const userById = new Map(state.users.map((user) => [user.id, user]));
+  const records: any[] = kind === 'users'
+    ? state.users.filter((user) => user.role !== 'admin').map((user) => ({ ...cleanUser(user), suspendedAt: user.suspendedAt, suspensionReason: user.suspensionReason }))
+    : kind === 'orders'
+      ? state.orders.map((order) => {
+        const customer = userById.get(order.userId);
+        return { ...safeOrder(order), customerName: order.customerName || customer?.name || 'Guest', customerEmail: order.email || customer?.email || '', customerPhone: order.phone || '', deliveryAddress: order.address || '', customerId: order.userId };
+      })
+      : kind === 'bookings'
+        ? state.bookings.map((booking) => ({ ...booking, customerName: userById.get(booking.userId)?.name || 'Customer', customerEmail: userById.get(booking.userId)?.email || '', providerName: userById.get(booking.providerUserId)?.name || booking.provider || 'Provider' }))
+        : kind === 'listings'
+          ? [
+            ...state.sellerProducts.map((product) => ({ ...product, listingType: 'Product', ownerId: product.userId, ownerName: userById.get(product.userId)?.name || product.seller || 'Seller', ownerRole: 'seller', isSuspended: isAccountSuspended(product.userId) })),
+            ...state.serviceListings.map((listing) => ({ ...listing, listingType: 'Service', ownerId: listing.userId, ownerName: userById.get(listing.userId)?.name || listing.provider || 'Provider', ownerRole: 'provider', isSuspended: isAccountSuspended(listing.userId) }))
+          ]
+          : kind === 'payouts'
+            ? state.payouts.map((payout) => {
+              const owner = userById.get(payout.userId);
+              return { ...payoutResponse(payout), ownerName: owner?.name || 'Account', ownerEmail: owner?.email || '', ownerRole: owner?.role || 'unknown' };
+            })
+            : state.auditLogs;
+  records.sort((left, right) => (Date.parse(right.createdAt) || 0) - (Date.parse(left.createdAt) || 0));
+  const filtered = search ? records.filter((record) => JSON.stringify(record).toLowerCase().includes(search)) : records;
+  response.json({ kind, total: filtered.length, offset, limit, records: filtered.slice(offset, offset + limit) });
+});
+app.patch('/api/admin/users/:id/suspension', (request: Request, response: Response) => {
+  const admin = requireAdmin(request);
+  const user = state.users.find((member) => member.id === request.params.id);
+  if (!user || !['seller', 'provider'].includes(user.role)) fail(404, 'Seller or service provider not found.');
+  const suspended = request.body?.suspended;
+  const reason = typeof request.body?.reason === 'string' ? sanitizeText(request.body.reason, '') : '';
+  if (typeof suspended !== 'boolean') fail(400, 'Choose whether to suspend or restore this account.');
+  if (suspended && reason.length < 5) fail(400, 'Enter a moderation reason of at least 5 characters.');
+  if (reason.length > 500) fail(400, 'Keep the moderation reason under 500 characters.');
+  if (suspended) {
+    user.suspendedAt = new Date().toISOString();
+    user.suspensionReason = reason;
+  } else {
+    user.suspendedAt = undefined;
+    user.suspensionReason = undefined;
+  }
+  saveState();
+  auditAction(suspended ? 'account.suspended' : 'account.restored', admin.id, { targetUserId: user.id, targetRole: user.role, reason });
+  response.json({ user: { ...cleanUser(user), suspendedAt: user.suspendedAt, suspensionReason: user.suspensionReason } });
+});
 app.get('/api/admin/overview', (request, response) => {
   const user = requireAdmin(request);
   response.json({ user: cleanUser(user), metrics: { totalUsers: state.users.length, totalOrders: state.orders.length, totalBookings: state.bookings.length, totalRevenue: state.orders.filter((order) => order.paymentStatus === 'paid').reduce((sum, order) => sum + Number(order.totalNaira || 0), 0), auditEntries: state.auditLogs.length } });
@@ -497,21 +640,28 @@ app.post('/api/payouts/:reference/retry', asyncRoute(async (request, response) =
   saveState();
   response.json({ payout: payoutResponse(payout), availableBalanceNaira: availableBalanceFor(user.id) });
 }));
-app.get('/api/products', (_request, response) => response.json([...catalog, ...state.sellerProducts]));
+app.get('/api/products', (_request, response) => response.json([
+  ...catalog,
+  ...state.sellerProducts.filter((product) => !isAccountSuspended(product.userId)).map((product) => {
+    const brandProfile = publicBusinessProfile(product.userId);
+    return { ...product, seller: brandProfile?.businessName || product.seller, brandProfile };
+  })
+]));
 app.get('/api/services/niches', (_request, response) => response.json(serviceNiches.map((name) => ({ name, image: nicheImages[name] }))));
 app.get('/api/services', (_request, response) => {
   const reviewsByListing: Record<string, any[]> = {};
   state.reviews.forEach((review) => { (reviewsByListing[review.listingId] ||= []).push(review); });
-  const userListings = state.serviceListings.map((listing) => {
+  const userListings = state.serviceListings.filter((listing) => !isAccountSuspended(listing.userId)).map((listing) => {
     const reviews = reviewsByListing[listing.id] || [];
-    return { ...listing, reviews, reviewCount: reviews.length, rating: reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0 };
+    const providerProfile = publicBusinessProfile(listing.userId);
+    return { ...listing, provider: providerProfile?.businessName || listing.provider, providerProfile, reviews, reviewCount: reviews.length, rating: reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0 };
   });
   response.json([...userListings, ...providers]);
 });
 
 app.post('/api/uploads/portfolio', (request: Request, response: Response, next: NextFunction) => {
   const user = authenticatedUser(request);
-  if (!user || !['provider', 'seller'].includes(user.role)) return response.status(403).json({ error: 'Sign in as a provider or seller to upload work.' });
+  if (!user || !['provider', 'seller', 'dispatch'].includes(user.role)) return response.status(403).json({ error: 'Sign in as a seller, service provider or dispatch rider to upload photos.' });
   imageUpload.array('images', 6)(request, response, (error: any) => {
     if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Each photo must be 5 MB or smaller.' : error.message || 'The photos could not be uploaded.' });
     const files = (request.files || []) as Express.Multer.File[];
@@ -633,6 +783,7 @@ app.get('/api/dashboard', (request: Request, response: Response) => {
 app.post('/api/provider/listings', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (user.role !== 'provider') fail(403, 'Use a service provider account to create a service listing.');
+  if (!hasCompleteBusinessProfile(user)) fail(409, 'Complete your public business profile before publishing a service.');
   const { niche, title, description, price, portfolio, video, videoDuration } = request.body || {};
   if (!serviceNiches.includes(niche)) fail(400, 'Choose one of the available service niches.');
   if (typeof title !== 'string' || title.trim().length < 3 || title.length > 100) fail(400, 'Enter a service title.');
@@ -651,6 +802,7 @@ app.post('/api/provider/listings', (request: Request, response: Response) => {
 app.post('/api/seller/products', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (user.role !== 'seller') fail(403, 'Use a seller account to add a product.');
+  if (!hasCompleteBusinessProfile(user)) fail(409, 'Complete your public business profile before publishing a product.');
   const { name, category, description, price, image, video, videoDuration } = request.body || {};
   if (typeof name !== 'string' || name.trim().length < 3 || name.length > 100) fail(400, 'Enter a product name.');
   if (!['Home', 'Fashion', 'Beauty', 'Tech', 'Food'].includes(category)) fail(400, 'Choose a valid product category.');
@@ -751,7 +903,7 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
   if (role === 'provider' && !serviceNiches.includes(sanitizedNiche || '')) fail(400, 'Choose an available service niche.');
   if (state.users.some((user) => (user.username || legacyUsername(user)).toLowerCase() === sanitizedUsername)) fail(409, 'That username is already taken.');
   if (state.users.some((user) => user.email.toLowerCase() === sanitizedEmail && user.role === role)) fail(409, 'This email already has an account for that role. Choose another role or sign in.');
-  if (role !== 'customer' && role !== 'admin' && (!sanitizedBusiness || sanitizedBusiness.length < 2)) fail(400, 'Enter your shop, service or delivery area name.');
+  if (role !== 'customer' && (!sanitizedBusiness || sanitizedBusiness.length < 2)) fail(400, 'Enter your shop, service or delivery area name.');
   const autoVerifyEmail = process.env.NODE_ENV === 'test' || process.env.AUTO_VERIFY_EMAIL !== 'false';
   const otpCode = autoVerifyEmail ? undefined : generateOtp();
   const user: User = {
@@ -821,6 +973,8 @@ app.post('/api/auth/login', asyncRoute(async (request: Request, response: Respon
     if (failedAttempt.lockUntil > Date.now()) fail(429, 'Too many failed login attempts. Please try again in 15 minutes.');
     fail(401, 'Username or password is incorrect.');
   }
+  if (user.role === 'admin') fail(403, 'Use the admin portal password to sign in.');
+  if (user.suspendedAt) fail(403, 'This account is suspended. Contact Unishop support for assistance.');
   if (!user.emailVerified && process.env.NODE_ENV !== 'test' && process.env.AUTO_VERIFY_EMAIL === 'false') {
     fail(403, 'Verify your email with the one-time code before logging in.');
   }
@@ -838,6 +992,29 @@ app.post('/api/auth/login', asyncRoute(async (request: Request, response: Respon
   response.json({ token: accessToken, refreshToken, user: cleanUser(user) });
 }));
 
+app.patch('/api/profile', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  if (!['seller', 'provider', 'dispatch'].includes(user.role)) fail(403, 'Business profiles are only available to sellers, service providers and dispatch riders.');
+  const profileSchema = z.object({
+    name: z.string().trim().min(2).max(100),
+    businessName: z.string().trim().min(2).max(120),
+    position: z.string().trim().min(2).max(80),
+    placeOfOperation: z.string().trim().min(2).max(120),
+    aboutMe: z.string().trim().min(20).max(1000),
+    profileImage: z.string().regex(/^\/uploads\/[\w.-]+$/)
+  });
+  const parsed = profileSchema.safeParse(request.body || {});
+  if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
+  user.name = sanitizeText(parsed.data.name, '');
+  user.businessName = sanitizeText(parsed.data.businessName, '');
+  user.position = sanitizeText(parsed.data.position, '');
+  user.placeOfOperation = sanitizeText(parsed.data.placeOfOperation, '');
+  user.aboutMe = sanitizeText(parsed.data.aboutMe, '');
+  user.profileImage = parsed.data.profileImage;
+  saveState();
+  auditAction('profile.updated', user.id, { role: user.role });
+  response.json({ user: cleanUser(user), complete: hasCompleteBusinessProfile(user) });
+});
 app.get('/api/me', (request: Request, response: Response) => response.json({ user: cleanUser(requireUser(request)) }));
 app.get('/api/me/orders', (request: Request, response: Response) => {
   const user = requireUser(request);
@@ -852,7 +1029,7 @@ app.post('/api/bookings', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (user.role !== 'customer') fail(403, 'Use a customer account to book a service.');
   const { providerId, neighbourhood, time, note } = request.body || {};
-  const provider = state.serviceListings.find((person) => person.id === providerId) || providers.find((person) => person.id === providerId);
+  const provider = state.serviceListings.find((person) => person.id === providerId && !isAccountSuspended(person.userId)) || providers.find((person) => person.id === providerId);
   if (!provider || typeof neighbourhood !== 'string' || neighbourhood.trim().length < 2 || typeof time !== 'string') fail(400, 'Complete the service booking details.');
   const providerUserId = provider.userId;
   const booking = { id: randomBytes(12).toString('hex'), userId: user.id, providerUserId, providerId, provider: provider.provider || provider.name, service: provider.title || provider.trade, amountNaira: provider.price, neighbourhood: neighbourhood.trim(), time, note: typeof note === 'string' ? note.slice(0, 1000) : '', status: 'requested', paymentStatus: 'unpaid', createdAt: new Date().toISOString() };
@@ -881,6 +1058,7 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     if (!user || user.role !== 'customer') fail(401, 'Sign in with a customer account to pay for this booking.');
     booking = state.bookings.find((item) => item.id === bookingId && item.userId === user.id && item.paymentStatus !== 'paid');
     if (!booking) fail(404, 'Unpaid service booking not found.');
+    if (isAccountSuspended(booking.providerUserId)) fail(409, 'This service provider is currently unavailable.');
     const serviceSubtotalNaira = Number(booking.amountNaira);
     const commissionNaira = commissionFor(serviceSubtotalNaira);
     const dispatchContributionNaira = 500;
@@ -901,7 +1079,7 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     if (!customer || typeof customer.name !== 'string' || customer.name.trim().length < 2 || typeof customer.phone !== 'string' || customer.phone.trim().length < 7) fail(400, 'Enter your name and phone number.');
     if (!delivery || typeof delivery.address !== 'string' || delivery.address.trim().length < 5 || typeof delivery.neighbourhood !== 'string' || delivery.neighbourhood.trim().length < 2) fail(400, 'Enter your Uyo delivery address and neighbourhood.');
     const serverItems = items.map((item: any) => {
-      const product = catalog.find((entry) => entry.id === item.id) || state.sellerProducts.find((entry) => entry.id === item.id);
+      const product = catalog.find((entry) => entry.id === item.id) || state.sellerProducts.find((entry) => entry.id === item.id && !isAccountSuspended(entry.userId));
       const quantity = Number(item.quantity);
       if (!product || !Number.isInteger(quantity) || quantity < 1 || quantity > 10) fail(400, 'Your bag contains an invalid product or quantity.');
       return { product, quantity };
