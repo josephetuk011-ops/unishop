@@ -12,6 +12,38 @@ describe('E-Marketplace Application', () => {
     expect(response.status).toBe(404);
   });
 
+  it.each(['http://localhost:3000', 'http://127.0.0.1:3000'])('should allow signup preflight from local storefront origin %s', async (origin) => {
+    const response = await request(app)
+      .options('/api/auth/register')
+      .set('Origin', origin)
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'content-type');
+
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe(origin);
+  });
+
+  it('should complete signup from the 127.0.0.1 storefront origin', async () => {
+    const username = `loopback${Date.now()}`;
+    const response = await request(app)
+      .post('/api/auth/register')
+      .set('Origin', 'http://127.0.0.1:3000')
+      .send({ name: 'Loopback Customer', username, email: `${username}@example.com`, password: 'loopback-test-password', role: 'customer' });
+
+    expect(response.status).toBe(201);
+    expect(response.headers['access-control-allow-origin']).toBe('http://127.0.0.1:3000');
+    expect(response.body.user.username).toBe(username);
+  });
+
+  it('should not allow signup preflight from an unrelated origin', async () => {
+    const response = await request(app)
+      .options('/api/auth/register')
+      .set('Origin', 'https://attacker.example')
+      .set('Access-Control-Request-Method', 'POST');
+
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
   it('should redirect the marketplace admin link to the separate console', async () => {
     const previousAdminUrl = process.env.ADMIN_APP_URL;
     process.env.ADMIN_APP_URL = 'https://admin.example.test';
