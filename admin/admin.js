@@ -209,6 +209,15 @@ async function refresh() {
 }
 
 function bindEvents() {
+  const adminPassword = document.querySelector('#admin-password');
+  const passwordToggle = document.querySelector('.password-toggle');
+  passwordToggle.addEventListener('click', () => {
+    const isVisible = adminPassword.type === 'password';
+    adminPassword.type = isVisible ? 'text' : 'password';
+    passwordToggle.setAttribute('aria-pressed', String(isVisible));
+    passwordToggle.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+    passwordToggle.title = isVisible ? 'Hide password' : 'Show password';
+  });
   document.querySelector('#login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget;

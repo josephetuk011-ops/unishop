@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#122623">
   <title>Unishop Admin</title>
   <link rel="stylesheet" href="/admin.css">
+  <link rel="stylesheet" href="/password-toggle.css">
   <script src="/admin.js" defer></script>
 </head>
 <body>
@@ -17,7 +18,7 @@
       <p class="login-copy">Use the private admin password configured for this deployment.</p>
       <form id="login-form">
         <label for="admin-password">Admin password</label>
-        <input id="admin-password" name="password" type="password" autocomplete="current-password" required minlength="10" autofocus>
+        <div class="password-input-wrap"><input id="admin-password" name="password" type="password" autocomplete="current-password" required minlength="10" autofocus><button class="password-toggle" type="button" aria-label="Show password" title="Show password" aria-pressed="false" aria-controls="admin-password"><span aria-hidden="true">◉</span></button></div>
         <button class="button button-primary" type="submit">Continue <span aria-hidden="true">↗</span></button>
         <p id="login-error" class="form-error" role="alert" hidden></p>
       </form>

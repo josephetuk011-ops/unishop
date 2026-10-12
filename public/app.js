@@ -235,6 +235,31 @@ function openBooking(providerId) {
 const authRoleNames = { customer: 'Customer', seller: 'Vendors and Brands', provider: 'Service provider', dispatch: 'Dispatch rider' };
 const authBackdrop = document.querySelector('#auth-backdrop');
 const authForm = document.querySelector('#auth-form');
+function addPasswordToggle(input) {
+  const wrapper = document.createElement('span');
+  wrapper.className = 'password-input-wrap';
+  input.before(wrapper);
+  wrapper.append(input);
+  if (!input.id) input.id = 'account-password';
+  const button = document.createElement('button');
+  button.className = 'password-toggle';
+  button.type = 'button';
+  button.setAttribute('aria-label', 'Show password');
+  button.setAttribute('aria-pressed', 'false');
+  button.setAttribute('aria-controls', input.id);
+  button.title = 'Show password';
+  button.innerHTML = '<span aria-hidden="true">◉</span>';
+  button.addEventListener('click', () => {
+    const isVisible = input.type === 'password';
+    input.type = isVisible ? 'text' : 'password';
+    button.setAttribute('aria-pressed', String(isVisible));
+    button.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password');
+    button.title = isVisible ? 'Hide password' : 'Show password';
+  });
+  wrapper.append(button);
+  return button;
+}
+const authPasswordToggle = addPasswordToggle(authForm.elements.password);
 authForm.autocomplete = 'off';
 authForm.elements.name.autocomplete = 'off';
 authForm.elements.email.autocomplete = 'off';
@@ -272,6 +297,10 @@ function openAuth(role = 'customer', mode = 'login') {
   selectedAuthRole = authRoleNames[role] ? role : 'customer';
   selectedAuthMode = mode;
   authForm.reset();
+  authForm.elements.password.type = 'password';
+  authPasswordToggle.setAttribute('aria-pressed', 'false');
+  authPasswordToggle.setAttribute('aria-label', 'Show password');
+  authPasswordToggle.title = 'Show password';
   authForm.elements.niche.innerHTML = serviceNiches.map(([name]) => `<option value="${name}">${name}</option>`).join('');
   updateAuthForm();
   authBackdrop.classList.add('open');

@@ -149,6 +149,12 @@ body { background: var(--paper); }
 #auth-form { display: grid; gap: 12px; }
 #auth-form label { display: grid; gap: 6px; color: #26385e; font-size: 11px; font-weight: 600; }
 #auth-form input { width: 100%; min-height: 42px; padding: 0 11px; border: 1px solid #dce3f2; border-radius: 3px; outline: 0; background: #fff; color: #172957; font-size: 12px; }
+#auth-form .password-input-wrap { position: relative; display: flex; align-items: center; width: 100%; }
+#auth-form .password-input-wrap > input { padding-right: 44px; }
+.password-toggle { position: absolute; right: 5px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; background: transparent; color: #53617c; font-size: 16px; cursor: pointer; }
+.password-toggle:hover { color: #214bc4; }
+.password-toggle:focus-visible { outline: 2px solid #214bc4; outline-offset: 1px; }
+.password-toggle[aria-pressed="true"]::after { position: absolute; width: 19px; height: 1px; background: currentColor; content: ""; transform: rotate(45deg); }
 #auth-form input:focus { border-color: #214bc4; box-shadow: 0 0 0 3px rgba(33, 75, 196, .1); }
 .auth-submit { width: 100%; justify-content: center; margin-top: 4px; }
 .auth-note { margin: 15px 0 0; color: #75809a; font-size: 10px; line-height: 1.55; }
