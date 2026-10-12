@@ -16,11 +16,23 @@ body { background: var(--paper); }
 .brand-logo { width: 44px; height: 44px; object-fit: cover; object-position: center; border-radius: 3px; background: #fff; }
 .site-header { background: #fff; border-bottom-color: #e5e9f2; }
 .search { background: #f4f6fb; border-color: #e6eaf3; }
+.shopping-section { padding-top: 22px; }
+.catalog-search { width: min(100%, 720px); max-width: none; flex: none; margin: 0 0 16px; }
 .location-button { color: #173679; }
 .account-button { border-color: #dce3f2; color: #173679; }
 .cart-button { color: #173679; }
 .category-nav { background: #fff; border-bottom-color: #e5e9f2; }
 .category-nav .sell-link { color: #214bc4; }
+.category-nav { background: #172957; border-bottom-color: #172957; }
+.category-nav a { color: #eef2fb; }
+.category-nav a.active, .category-nav .sell-link { color: #f2bd50; }
+.category-nav a.active:after { background: #f2bd50; }
+.vision-ticker { height: 42px; overflow: hidden; display: flex; align-items: center; background: #f2bd50; color: #172957; }
+.vision-track { display: flex; width: max-content; animation: vision-scroll 34s linear infinite; }
+.vision-ticker p { display: flex; align-items: center; gap: 14px; flex: none; margin: 0; padding-right: 64px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.vision-ticker p span { font-weight: 600; }
+.vision-ticker:hover .vision-track { animation-play-state: paused; }
+@keyframes vision-scroll { to { transform: translateX(-50%); } }
 .new-tag { background: #e5edff; color: #214bc4; }
 .hero { padding-top: 44px; background: #fff3e7; }
 .hero h1 { color: #172957; }
@@ -41,6 +53,7 @@ body { background: var(--paper); }
 .trust-strip .trust-icon { color: #f2bd50; }
 .category-pill.selected { background: #214bc4; border-color: #214bc4; color: #fff; }
 .product-badge { background: #e7edff; color: #193a91; }
+.product-image { border-radius: 8px 0; }
 .save-button.saved { color: #214bc4; }
 .add-button { background: #214bc4; }
 .services-section { background: #fff0e3; }
@@ -226,6 +239,10 @@ body { background: var(--paper); }
 body.dark-theme { --ink: #f1f4fa; --muted: #a7b3c8; --paper: #111723; --white: #1b2432; --line: #303a4b; background: #111723; color: #f1f4fa; }
 body.dark-theme .announcement { background: #080e18; }
 body.dark-theme .site-header,body.dark-theme .category-nav,body.dark-theme .site-footer { background: #151e2b; border-color: #303a4b; color: #a7b3c8; }
+body.dark-theme .category-nav { background: #172957; border-color: #172957; }
+body.dark-theme .category-nav a { color: #eef2fb; }
+body.dark-theme .category-nav a.active,body.dark-theme .category-nav .sell-link { color: #f2bd50; }
+body.dark-theme .vision-ticker { background: #f2bd50; color: #172957; }
 body.dark-theme .wordmark,body.dark-theme .site-footer .wordmark { color: #f1f4fa; }
 body.dark-theme .search { border-color: #303a4b; background: #202b3b; }
 body.dark-theme .search input,body.dark-theme .search-icon,body.dark-theme .location-button,body.dark-theme .account-button,body.dark-theme .cart-button { color: #e6ebf5; }
@@ -278,6 +295,7 @@ body.dark-theme .announcement-close { color: #fff; }
 .market-tab { min-width: 84px; height: 35px; padding: 0 12px; border: 0; border-radius: 3px; background: transparent; color: #53617c; font-size: 11px; font-weight: 600; cursor: pointer; }
 .market-tab.selected { background: #214bc4; color: #fff; }
 .marketplace-niches { grid-template-columns: repeat(7, minmax(0, 1fr)); margin: 9px 0 24px; }
+.category-pills[hidden] { display: none; }
 .marketplace-niches[hidden] { display: none; }
 .marketplace-niches .service-niche-card { padding-bottom: 9px; }
 .marketplace-niches .service-niche-card img { height: 132px; }
@@ -383,3 +401,4 @@ body.dark-theme .short-card { border-color: #303a4b; background: #182231; }
 body.dark-theme .shorts-empty { border-color: #303a4b; }
 @media(max-width:1050px) { .shorts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media(max-width:760px) { .shorts-section { margin-block: 38px 50px; } .shorts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; } .short-card-copy { padding: 9px; } .short-card-action { align-items: stretch; flex-direction: column; } .short-card-action button { width: 100%; } }
+@media(prefers-reduced-motion:reduce) { .vision-track { width: 100%; animation: none; justify-content: center; } .vision-ticker p { flex-wrap: wrap; justify-content: center; padding: 8px 16px; text-align: center; white-space: normal; } .vision-ticker p[aria-hidden="true"] { display: none; } }

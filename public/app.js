@@ -9,6 +9,7 @@ const products = [
   { id: 'speaker', name: 'Pocket-sized good tunes', seller: 'Circuit & Co., Uyo', category: 'Tech', price: 31500, rating: '4.8', reviews: 93, badge: 'TRENDING', image: 'photo-1608043152269-423dbba4e7e1' }
 ];
 
+const vendorProducts = [];
 const providers = [];
 const serviceNiches = [
   ['Barbing', 'photo-1503951914875-452162b0f3f1'], ['Cleaning', 'photo-1581578731548-c64695cc6952'], ['Cooking', 'photo-1556911220-bff31c812dba'],
@@ -36,6 +37,7 @@ let currentUser = readStorage('unishop-user', null);
 let toastTimer;
 
 const productGrid = document.querySelector('#product-grid');
+const visionTrack = document.querySelector('.vision-track');
 const shortsSection = document.createElement('section');
 shortsSection.className = 'shorts-section page-width';
 shortsSection.id = 'products-shorts';
@@ -45,25 +47,6 @@ const shortsGrid = document.querySelector('#shorts-grid');
 const cartDrawer = document.querySelector('#cart-drawer');
 const backdrop = document.querySelector('#drawer-backdrop');
 const toastNode = document.querySelector('#toast');
-const heroVideo = document.querySelector('.hero-video');
-const heroMotionToggle = document.querySelector('.hero-motion-toggle');
-if (heroVideo && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) heroVideo.play().catch(() => {});
-heroMotionToggle?.addEventListener('click', () => {
-  if (heroVideo.paused) {
-    heroVideo.play().catch(() => {});
-    heroMotionToggle.textContent = 'Ⅱ';
-    heroMotionToggle.setAttribute('aria-label', 'Pause hero video');
-    heroMotionToggle.title = 'Pause background video';
-    heroMotionToggle.setAttribute('aria-pressed', 'true');
-  } else {
-    heroVideo.pause();
-    heroMotionToggle.textContent = '▶';
-    heroMotionToggle.setAttribute('aria-label', 'Play hero video');
-    heroMotionToggle.title = 'Play background video';
-    heroMotionToggle.setAttribute('aria-pressed', 'false');
-  }
-});
-document.querySelector('#products .section-heading .eyebrow').textContent = 'SHOP GOODS · BOOK UYO SERVICES';
 document.querySelector('.category-pill[data-category="All"] span').textContent = String(products.length);
 
 function showToast(message) {
@@ -90,10 +73,43 @@ function renderShorts() {
   shortsGrid.innerHTML = cards.join('') || '<p class="shorts-empty">No product or service shorts yet.</p>';
 }
 
+function renderVisionTicker() {
+  const newestUnique = (listings, type, getName) => {
+    const seen = new Set();
+    return listings
+      .map((listing) => ({ name: getName(listing), createdAt: listing.createdAt, type }))
+      .filter((listing) => listing.name)
+      .sort((first, second) => Date.parse(second.createdAt || '') - Date.parse(first.createdAt || ''))
+      .filter((listing) => {
+        const key = listing.name.trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 3);
+  };
+  const latestGoods = newestUnique(vendorProducts, 'GOOD', (product) => product.name);
+  const latestServices = newestUnique(providers, 'SERVICE', (provider) => provider.title || provider.trade || provider.niche);
+  const latestUploads = [...latestGoods, ...latestServices]
+    .sort((first, second) => Date.parse(second.createdAt || '') - Date.parse(first.createdAt || ''));
+  const names = latestUploads.map((listing) => `${listing.type}: ${listing.name}`).join('  /  ');
+  const message = names || 'New goods and services from Uyo vendors will appear here soon.';
+  visionTrack.replaceChildren(...[false, true].map((isDuplicate) => {
+    const item = document.createElement('p');
+    const label = document.createElement('strong');
+    const listingNames = document.createElement('span');
+    label.textContent = 'LATEST GOODS & SERVICES';
+    listingNames.textContent = message;
+    item.append(label, listingNames);
+    if (isDuplicate) item.setAttribute('aria-hidden', 'true');
+    return item;
+  }));
+}
+
 function renderProducts() {
   const goods = products.filter((product) => {
     const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
-    const matchesSearch = `${product.name} ${product.seller} ${product.category}`.toLowerCase().includes(searchTerm);
+    const matchesSearch = `${product.name} ${product.seller} ${product.brandProfile?.businessName || ''} ${product.category}`.toLowerCase().includes(searchTerm);
     return matchesCategory && matchesSearch;
   });
   const goodsMarkup = marketMode === 'services' ? [] : goods.map((product, index) => `
@@ -115,9 +131,8 @@ function renderProducts() {
   productGrid.innerHTML = listings.join('') || `<p class="no-results">${marketMode === 'services' && activeNiche !== 'All' ? `No ${activeNiche.toLowerCase()} listings found yet.` : 'No listings match that search. Try another category.'}</p>`;
   const nicheGrid = document.querySelector('#marketplace-niches');
   nicheGrid.innerHTML = serviceNiches.map(([name, image]) => `<button class="service-niche-card ${activeNiche === name ? 'selected' : ''}" data-service-niche="${name}"><img src="${imageUrl(image, 640)}" alt="${name} service in Uyo" loading="lazy"><span>${name}</span><b>Explore ↗</b></button>`).join('');
-  nicheGrid.hidden = marketMode === 'goods';
+  nicheGrid.hidden = marketMode !== 'services';
   document.querySelector('.category-pills').hidden = marketMode === 'services';
-  document.querySelectorAll('[data-market]').forEach((button) => button.classList.toggle('selected', button.dataset.market === marketMode));
 }
 
 function renderProviders(category = 'All') {
@@ -269,7 +284,6 @@ function closeAuth() {
   document.body.style.overflow = '';
 }
 
-document.querySelector('.announcement-close').addEventListener('click', () => document.querySelector('.announcement').remove());
 document.querySelector('.cart-button').addEventListener('click', openCart);
 document.querySelector('.close-drawer').addEventListener('click', closeCart);
 document.querySelector('.close-empty').addEventListener('click', closeCart);
@@ -403,12 +417,26 @@ document.querySelectorAll('.category-pill').forEach((pill) => pill.addEventListe
   document.querySelectorAll('.category-pill').forEach((item) => item.classList.toggle('selected', item === pill));
   renderProducts();
 }));
-document.querySelectorAll('[data-nav-category]').forEach((link) => link.addEventListener('click', () => {
-  selectedCategory = link.dataset.navCategory;
+document.querySelectorAll('[data-nav-mode]').forEach((link) => link.addEventListener('click', (event) => {
+  event.preventDefault();
+  const mode = link.dataset.navMode;
+  marketMode = mode === 'services' ? 'services' : mode === 'goods' ? 'goods' : 'all';
+  selectedCategory = 'All';
+  activeNiche = 'All';
   searchTerm = '';
-  document.querySelector('#search-input').value = '';
-  document.querySelectorAll('.category-pill').forEach((pill) => pill.classList.toggle('selected', pill.dataset.category === selectedCategory));
+  const searchInput = document.querySelector('#search-input');
+  searchInput.value = '';
+  searchInput.placeholder = mode === 'brands' ? 'Search brands and goods' : 'Search products, services and brands';
+  document.querySelectorAll('[data-nav-mode]').forEach((item) => {
+    const active = item === link;
+    item.classList.toggle('active', active);
+    if (active) item.setAttribute('aria-current', 'page');
+    else item.removeAttribute('aria-current');
+  });
+  document.querySelectorAll('.category-pill').forEach((pill) => pill.classList.toggle('selected', pill.dataset.category === 'All'));
   renderProducts();
+  document.querySelector(mode === 'shorts' ? '#products-shorts' : '#products').scrollIntoView({ behavior: 'smooth' });
+  if (mode === 'brands') searchInput.focus();
 }));
 
 productGrid.addEventListener('click', (event) => {
@@ -453,14 +481,6 @@ document.querySelector('#marketplace-niches').addEventListener('click', (event) 
     renderProviders(niche.dataset.serviceNiche);
   }
 });
-document.querySelectorAll('[data-market]').forEach((button) => button.addEventListener('click', () => {
-  marketMode = button.dataset.market;
-  activeNiche = 'All';
-  selectedCategory = 'All';
-  document.querySelectorAll('.category-pill').forEach((pill) => pill.classList.toggle('selected', pill.dataset.category === 'All'));
-  renderProducts();
-}));
-
 function closeProductDetail() {
   document.querySelector('#product-detail-backdrop').classList.remove('open');
   document.querySelector('#detail-media').querySelector('video')?.pause();
@@ -588,6 +608,7 @@ renderProducts();
 renderProviders();
 renderShorts();
 renderCart();
+renderVisionTicker();
 document.querySelectorAll('a[href="#services"], a[href="#providers"]').forEach((link) => link.setAttribute('href', '#products'));
 document.querySelector('#services')?.remove();
 if (currentUser?.name) document.querySelector('.account-button span:last-child').textContent = currentUser.name.split(' ')[0];
@@ -597,15 +618,18 @@ fetch('/api/services').then((response) => response.ok ? response.json() : []).th
     providers.splice(0, providers.length, ...data);
     renderProviders(activeNiche);
     renderShorts();
+    renderVisionTicker();
   }
 }).catch(() => {});
 fetch('/api/products').then((response) => response.ok ? response.json() : []).then((data) => {
   if (Array.isArray(data) && data.length) {
     const known = new Set(products.map((product) => product.id));
+    vendorProducts.splice(0, vendorProducts.length, ...data.filter((product) => !known.has(product.id)));
     data.forEach((product) => { if (!known.has(product.id)) products.push({ ...product, badge: 'UYO SHOP' }); });
     renderProducts();
     renderShorts();
     renderCart();
+    renderVisionTicker();
   }
 }).catch(() => {});
 verifyPaymentReturn();
