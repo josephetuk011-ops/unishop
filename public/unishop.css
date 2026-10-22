@@ -408,3 +408,8 @@ body.dark-theme .shorts-empty { border-color: #303a4b; }
 @media(max-width:1050px) { .shorts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media(max-width:760px) { .shorts-section { margin-block: 38px 50px; } .shorts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; } .short-card-copy { padding: 9px; } .short-card-action { align-items: stretch; flex-direction: column; } .short-card-action button { width: 100%; } }
 @media(prefers-reduced-motion:reduce) { .vision-track { width: 100%; animation: none; justify-content: center; } .vision-ticker p { flex-wrap: wrap; justify-content: center; padding: 8px 16px; text-align: center; white-space: normal; } .vision-ticker p[aria-hidden="true"] { display: none; } }
+.auth-error { margin: 0 0 10px; padding: 9px 12px; border-radius: 10px; background: #fdecec; color: #a32121; font-size: 13px; line-height: 1.4; }
+.auth-switch { margin: 14px 0 0; text-align: center; color: #5b6580; font-size: 13px; }
+.auth-switch button { border: 0; background: none; padding: 0; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+body.dark-theme .auth-error { background: #3a1d1f; color: #ffb4b4; }
+body.dark-theme .auth-switch { color: #a5b1c7; }

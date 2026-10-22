@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import helmet from 'helmet';
+import compression from 'compression';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
@@ -50,8 +51,8 @@ const registerSchema = z.object({
   niche: z.string().trim().max(80).optional()
 });
 const loginSchema = z.object({
-  username: z.string().trim().min(3).max(30),
-  password: z.string().min(10).max(128)
+  username: z.string().trim().min(1, 'Enter your username.').max(30, 'Enter your username.'),
+  password: z.string().min(1, 'Enter your password.').max(128, 'Username or password is incorrect.')
 });
 const sanitizeText = (value: unknown, fallback = '') => {
   if (typeof value !== 'string') return fallback;
@@ -367,6 +368,7 @@ function updatePayoutFromTransfer(payout: any, transfer: any) {
 }
 
 app.disable('x-powered-by');
+app.use(compression());
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -452,7 +454,13 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit:
   }
 });
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  etag: true,
+  setHeaders: (res, filePath) => {
+    // HTML and scripts/styles are not fingerprinted, so revalidate them; images and fonts can be cached.
+    res.setHeader('Cache-Control', /\.(?:jpe?g|png|webp|svg|ico|mp4|woff2?)$/i.test(filePath) ? 'public, max-age=604800' : 'no-cache');
+  }
+}));
 app.use('/uploads', express.static(uploadDirectory, { fallthrough: false, maxAge: '1d' }));
 
 app.get('/admin', (_request, response) => {
