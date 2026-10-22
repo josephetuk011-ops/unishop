@@ -144,7 +144,8 @@ function openProductDetail(productId) {
   const product = products.find((item) => item.id === productId);
   if (!product) return;
   const media = document.querySelector('#detail-media');
-  media.innerHTML = `<img class="detail-image" src="${imageUrl(product.image, 1200)}" alt="${product.name}">${product.video ? `<video class="detail-video" src="${imageUrl(product.video)}" controls playsinline preload="metadata" aria-label="Vendor or brand video showing ${product.name}"></video>` : ''}`;
+  const gallery = Array.isArray(product.images) && product.images.length ? product.images.slice(0, 3) : [product.image];
+  media.innerHTML = `<img class="detail-image" src="${imageUrl(gallery[0], 1200)}" alt="${product.name}">${gallery.length > 1 ? `<div class="detail-thumbs">${gallery.map((photo, index) => `<button type="button" class="detail-thumb${index === 0 ? ' active' : ''}" data-photo="${escapeShortText(imageUrl(photo, 1200))}" aria-label="Show photo ${index + 1} of ${gallery.length}"><img src="${escapeShortText(imageUrl(photo, 160))}" alt=""></button>`).join('')}</div>` : ''}${product.video ? `<video class="detail-video" src="${imageUrl(product.video)}" controls playsinline preload="metadata" aria-label="Vendor or brand video showing ${product.name}"></video>` : ''}`;
   document.querySelector('#detail-category').textContent = `${product.category} · UYO MARKETPLACE`;
   document.querySelector('#product-detail-title').textContent = product.name;
   document.querySelector('#detail-rating').innerHTML = product.rating ? `<strong>★ ${product.rating}</strong> <span>${product.reviews || 0} customer ratings</span>` : '<span>New listing · No ratings yet</span>';
@@ -507,6 +508,12 @@ productGrid.addEventListener('click', (event) => {
   if (productDetailButton) openProductDetail(productDetailButton.dataset.productDetail);
 });
 
+document.querySelector('#detail-media').addEventListener('click', (event) => {
+  const thumb = event.target.closest('.detail-thumb');
+  if (!thumb) return;
+  document.querySelector('#detail-media .detail-image').src = thumb.dataset.photo;
+  document.querySelectorAll('#detail-media .detail-thumb').forEach((item) => item.classList.toggle('active', item === thumb));
+});
 shortsGrid.addEventListener('click', (event) => {
   const addButton = event.target.closest('[data-short-add]');
   const bookButton = event.target.closest('[data-short-book]');

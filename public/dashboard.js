@@ -92,7 +92,7 @@ function serviceForm() {
   return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><label class="form-field">Starting price (NGN)<input name="price" type="number" required min="500" step="100" placeholder="12000"></label><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 6 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · MP4 or WebM · maximum 30 seconds.</span><input name="video" type="file" accept="video/mp4,video/webm"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerForm() {
-  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option>Home</option><option>Fashion</option><option>Beauty</option><option>Tech</option><option>Food</option></select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><label class="form-field">Product photo<input name="image" type="file" accept="image/jpeg,image/png,image/webp" required></label><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · MP4 or WebM · maximum 30 seconds.</span><input name="video" type="file" accept="video/mp4,video/webm"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
+  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option>Home</option><option>Fashion</option><option>Beauty</option><option>Tech</option><option>Food</option></select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><label class="form-field">Product photos <span class="form-help">1 to 3 photos. The first is the cover.</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label><div class="upload-preview full" id="product-preview"></div><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · MP4 or WebM · maximum 30 seconds.</span><input name="video" type="file" accept="video/mp4,video/webm"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerDashboard() {
   const { products, orders, metrics, user } = dashboardData;
@@ -404,6 +404,17 @@ document.addEventListener('click', async (event) => {
 });
 
 document.addEventListener('change', (event) => {
+  if (event.target.matches('#product-form [name="images"]')) {
+    const files = [...event.target.files];
+    const preview = document.querySelector('#product-preview');
+    if (files.length > 3) {
+      event.target.value = '';
+      preview.innerHTML = '';
+      notify('Choose up to 3 photos per product.');
+    } else {
+      preview.innerHTML = files.map((image) => `<img alt="Selected product photo" src="${URL.createObjectURL(image)}">`).join('');
+    }
+  }
   if (event.target.matches('#service-form [name="images"]')) {
     const images = [...event.target.files].slice(0, 6);
     document.querySelector('#service-preview').innerHTML = images.map((image) => `<img alt="Selected work photo" src="${URL.createObjectURL(image)}">`).join('');
@@ -497,9 +508,11 @@ document.addEventListener('submit', async (event) => {
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     try {
-      const uploaded = await uploadFiles([form.elements.image.files[0]]);
+      const photos = [...form.elements.images.files];
+      if (photos.length < 1 || photos.length > 3) throw new Error('Choose 1 to 3 product photos.');
+      const uploaded = await uploadFiles(photos);
       const uploadedVideo = await uploadShortVideo(form.elements.video.files[0]);
-      await api('/api/seller/products', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value, category: form.elements.category.value, description: form.elements.description.value, price: form.elements.price.value, image: uploaded.images[0], video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
+      await api('/api/seller/products', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value, category: form.elements.category.value, description: form.elements.description.value, price: form.elements.price.value, images: uploaded.images, video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
       selectedView = 'listings';
       await refreshDashboard();
       notify('Product published to your catalogue.');

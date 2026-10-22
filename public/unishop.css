@@ -413,3 +413,8 @@ body.dark-theme .shorts-empty { border-color: #303a4b; }
 .auth-switch button { border: 0; background: none; padding: 0; color: inherit; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
 body.dark-theme .auth-error { background: #3a1d1f; color: #ffb4b4; }
 body.dark-theme .auth-switch { color: #a5b1c7; }
+
+.detail-thumbs { display: flex; gap: 8px; }
+.detail-thumb { width: 58px; height: 58px; padding: 0; border: 2px solid transparent; border-radius: 6px; overflow: hidden; background: #e8edf6; cursor: pointer; }
+.detail-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.detail-thumb.active { border-color: #2149c1; }
