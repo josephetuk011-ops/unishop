@@ -112,6 +112,11 @@ function renderProducts() {
     const matchesSearch = `${product.name} ${product.seller} ${product.brandProfile?.businessName || ''} ${product.category}`.toLowerCase().includes(searchTerm);
     return matchesCategory && matchesSearch;
   });
+  const categoryOrder = ['Home', 'Fashion', 'Beauty', 'Tech', 'Food'];
+  const categoryLabels = { Home: 'Home & living', Fashion: 'Fashion', Beauty: 'Beauty', Tech: 'Tech', Food: 'Food & pantry' };
+  const categoryRank = (name) => categoryOrder.includes(name) ? categoryOrder.indexOf(name) : categoryOrder.length;
+  goods.sort((left, right) => categoryRank(left.category) - categoryRank(right.category));
+  const groupHeading = (label, count, kind) => `<h3 class="category-heading" data-group="${escapeShortText(kind)}"><span>${escapeShortText(label)}</span><small>${count} ${count === 1 ? 'listing' : 'listings'}</small></h3>`;
   const goodsMarkup = marketMode === 'services' ? [] : goods.map((product, index) => `
     <article class="product-card goods-card" style="animation-delay:${index * 35}ms">
       <div class="product-image-wrap"><img class="product-image" src="${imageUrl(product.image)}" alt="${product.name}" loading="lazy"><button class="product-open-image" data-product-detail="${product.id}" aria-label="View ${product.name} details"></button><span class="product-badge ${product.category === 'Beauty' ? 'coral' : ''}">${product.badge || 'UYO SHOP'}</span>${product.video ? '<span class="product-video-badge">▶ VIDEO</span>' : ''}<button class="save-button ${saved.has(product.id) ? 'saved' : ''}" data-save="${product.id}" aria-label="${saved.has(product.id) ? 'Remove from' : 'Save to'} favourites">${saved.has(product.id) ? '♥' : '♡'}</button></div>
@@ -126,9 +131,26 @@ function renderProducts() {
     const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
     return `<article class="product-card service-market-card" style="animation-delay:${(index + goodsMarkup.length) * 35}ms"><button class="service-market-image" data-book="${provider.id}" aria-label="View and book ${provider.title || provider.trade}"><img src="${imageUrl(image, 760)}" alt="${provider.title || provider.trade} by ${provider.provider || provider.name}" loading="lazy"><span class="service-image-tag">${provider.niche || provider.category || 'LOCAL SERVICE'}</span><span class="service-open-label">View service ↗</span></button><div class="product-details"><div class="product-vendor">${provider.provider || provider.name} · ${provider.neighbourhood || 'Uyo, Akwa Ibom'}</div><h3 class="product-name">${provider.title || provider.trade}</h3><div class="product-bottom"><span class="product-price">${formatPrice(Number(provider.price))}</span><span class="product-rating"><b>★</b> ${Number(provider.rating || 0).toFixed(1)} <span>(${provider.reviewCount || provider.reviews || 0})</span></span><button class="book-button" data-book="${provider.id}">Book</button></div></div></article>`;
   });
+  const withHeadings = (items, markup, labelFor, keyFor, kind) => {
+    const output = [];
+    let current;
+    items.forEach((item, index) => {
+      const key = keyFor(item) || 'Other';
+      if (key !== current) {
+        current = key;
+        output.push(groupHeading(labelFor(key), items.filter((entry) => (keyFor(entry) || 'Other') === key).length, kind));
+      }
+      output.push(markup[index]);
+    });
+    return output;
+  };
+  const groupedGoods = withHeadings(marketMode === 'services' ? [] : goods, goodsMarkup, (key) => categoryLabels[key] || key, (product) => product.category, 'goods');
+  const serviceItems = marketMode === 'goods' ? [] : [...services].sort((left, right) => String(left.niche || left.category || left.trade || '').localeCompare(String(right.niche || right.category || right.trade || '')));
+  const serviceMarkupByItem = new Map(services.map((provider, index) => [provider, serviceMarkup[index]]));
+  const groupedServices = withHeadings(serviceItems, serviceItems.map((provider) => serviceMarkupByItem.get(provider)), (key) => key, (provider) => provider.niche || provider.category || provider.trade, 'services');
   const listings = [...goodsMarkup, ...serviceMarkup];
   document.querySelector('.category-pill[data-category="All"] span').textContent = String(listings.length);
-  productGrid.innerHTML = listings.join('') || `<p class="no-results">${marketMode === 'services' && activeNiche !== 'All' ? `No ${activeNiche.toLowerCase()} listings found yet.` : 'No listings match that search. Try another category.'}</p>`;
+  productGrid.innerHTML = [...groupedGoods, ...groupedServices].join('') || `<p class="no-results">${marketMode === 'services' && activeNiche !== 'All' ? `No ${activeNiche.toLowerCase()} listings found yet.` : 'No listings match that search. Try another category.'}</p>`;
   const nicheGrid = document.querySelector('#marketplace-niches');
   nicheGrid.innerHTML = serviceNiches.map(([name, image]) => `<button class="service-niche-card ${activeNiche === name ? 'selected' : ''}" data-service-niche="${name}"><img src="${imageUrl(image, 640)}" alt="${name} service in Uyo" loading="lazy"><span>${name}</span><b>Explore ↗</b></button>`).join('');
   nicheGrid.hidden = marketMode !== 'services';
