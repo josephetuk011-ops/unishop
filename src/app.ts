@@ -51,8 +51,8 @@ const registerSchema = z.object({
   niche: z.string().trim().max(80).optional()
 });
 const loginSchema = z.object({
-  username: z.string().trim().min(3).max(30),
-  password: z.string().min(10).max(128)
+  username: z.string().trim().min(1, 'Enter your username.').max(30, 'Enter your username.'),
+  password: z.string().min(1, 'Enter your password.').max(128, 'Username or password is incorrect.')
 });
 const sanitizeText = (value: unknown, fallback = '') => {
   if (typeof value !== 'string') return fallback;

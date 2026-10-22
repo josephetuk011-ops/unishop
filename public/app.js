@@ -260,11 +260,25 @@ function addPasswordToggle(input) {
   return button;
 }
 const authPasswordToggle = addPasswordToggle(authForm.elements.password);
-authForm.autocomplete = 'off';
-authForm.elements.name.autocomplete = 'off';
-authForm.elements.email.autocomplete = 'off';
+authForm.autocomplete = 'on';
+authForm.elements.name.autocomplete = 'name';
+authForm.elements.email.autocomplete = 'email';
 authForm.elements.username.autocomplete = 'username';
-authForm.elements.password.autocomplete = 'new-password';
+authForm.elements.password.autocomplete = 'current-password';
+const authError = document.createElement('p');
+authError.className = 'auth-error';
+authError.setAttribute('role', 'alert');
+authError.hidden = true;
+authForm.querySelector('.auth-submit').before(authError);
+const authSwitch = document.createElement('p');
+authSwitch.className = 'auth-switch';
+authForm.after(authSwitch);
+authSwitch.addEventListener('click', (event) => {
+  if (!event.target.closest('button')) return;
+  selectedAuthMode = selectedAuthMode === 'login' ? 'register' : 'login';
+  updateAuthForm();
+});
+function showAuthError(message) { authError.textContent = message; authError.hidden = !message; }
 
 function updateAuthForm() {
   const registering = selectedAuthMode === 'register';
@@ -289,6 +303,10 @@ function updateAuthForm() {
   authForm.elements.username.required = true;
   authForm.elements.business.required = registering && roleNeedsBusiness;
   authForm.elements.password.autocomplete = registering ? 'new-password' : 'current-password';
+  authForm.elements.password.minLength = registering ? 10 : 1;
+  authForm.elements.password.placeholder = registering ? 'At least 10 characters' : 'Your password';
+  authSwitch.innerHTML = registering ? 'Already have an account? <button type="button">Sign in</button>' : 'New to Unishop? <button type="button">Create an account</button>';
+  showAuthError('');
   document.querySelector('.auth-submit').innerHTML = registering ? `Create ${authRoleNames[selectedAuthRole]} account <span>→</span>` : 'Sign in <span>→</span>';
   document.querySelector('.auth-intro').textContent = registering ? `${authRoleNames[selectedAuthRole]} account · Uyo, Akwa Ibom` : 'Sign in with your username and password.';
 }
@@ -297,6 +315,7 @@ function openAuth(role = 'customer', mode = 'login') {
   selectedAuthRole = authRoleNames[role] ? role : 'customer';
   selectedAuthMode = mode;
   authForm.reset();
+  authForm.elements.username.value = mode === 'login' ? (localStorage.getItem('unishop-last-username') || '') : '';
   authForm.elements.password.type = 'password';
   authPasswordToggle.setAttribute('aria-pressed', 'false');
   authPasswordToggle.setAttribute('aria-label', 'Show password');
@@ -305,7 +324,8 @@ function openAuth(role = 'customer', mode = 'login') {
   updateAuthForm();
   authBackdrop.classList.add('open');
   document.body.style.overflow = 'hidden';
-  (selectedAuthMode === 'register' ? authForm.elements.name : authForm.elements.username).focus();
+  const focusTarget = selectedAuthMode === 'register' ? authForm.elements.name : authForm.elements.username.value ? authForm.elements.password : authForm.elements.username;
+  focusTarget.focus();
 }
 
 function closeAuth() {
@@ -589,6 +609,7 @@ authForm.addEventListener('submit', async (event) => {
   const form = event.currentTarget;
   const submit = form.querySelector('button[type="submit"]');
   submit.disabled = true;
+  showAuthError('');
   try {
     const registering = selectedAuthMode === 'register';
     const credentials = { username: form.elements.username.value, password: form.elements.password.value };
@@ -607,6 +628,7 @@ authForm.addEventListener('submit', async (event) => {
     sessionToken = result.token;
     currentUser = result.user;
     localStorage.setItem('unishop-token', sessionToken);
+    localStorage.setItem('unishop-last-username', credentials.username.trim().toLowerCase());
     localStorage.setItem('unishop-user', JSON.stringify(currentUser));
     closeAuth();
     showToast(`Welcome${registering ? ' to Unishop' : ' back'}, ${currentUser.name}.`);
@@ -614,7 +636,7 @@ authForm.addEventListener('submit', async (event) => {
     form.reset();
     if (['seller', 'provider', 'dispatch'].includes(currentUser.role)) window.location.assign('/dashboard.html');
   } catch (error) {
-    showToast(error.message);
+    showAuthError(error.message);
   } finally {
     submit.disabled = false;
   }
