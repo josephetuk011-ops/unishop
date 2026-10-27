@@ -204,6 +204,17 @@ function renderProviders(category = 'All') {
   renderProducts();
 }
 
+function renderRelatedProducts(product) {
+  const section = document.querySelector('#detail-related');
+  const grid = document.querySelector('#detail-related-grid');
+  if (!section || !grid) return;
+  const pool = products.filter((item) => item.id !== product.id && item.stock !== 0);
+  const score = (item) => (item.category === product.category ? 2 : 0) + (product.userId && item.userId === product.userId ? 1 : 0);
+  const related = pool.map((item) => ({ item, score: score(item) })).sort((a, b) => b.score - a.score).slice(0, 12).map((row) => row.item);
+  section.hidden = !related.length;
+  grid.innerHTML = related.map((item) => `<button type="button" class="related-card" data-product-detail="${escapeShortText(item.id)}"><img src="${escapeShortText(imageUrl(item.image, 400))}" alt="${escapeShortText(item.name)}" loading="lazy"><span class="related-name">${escapeShortText(item.name)}</span><strong>${formatPrice(item.price)}</strong><small>${item.rating ? `★ ${Number(item.rating).toFixed(1)}/5` : escapeShortText(item.seller || '')}</small></button>`).join('');
+}
+
 function openProductDetail(productId) {
   const product = products.find((item) => item.id === productId);
   if (!product) return;
@@ -252,6 +263,8 @@ function openProductDetail(productId) {
   document.querySelector('#detail-video-note').textContent = product.video ? 'Vendor- or brand-uploaded product video' : 'No product video uploaded by this vendor or brand.';
   document.querySelector('#detail-add-to-bag').dataset.add = product.id;
   renderDetailExtras(product);
+  renderRelatedProducts(product);
+  document.querySelector('.product-detail-modal').scrollTop = 0;
   document.querySelector('#product-detail-backdrop').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -672,6 +685,10 @@ document.querySelector('#marketplace-niches').addEventListener('click', (event) 
     marketMode = 'services';
     renderProviders(niche.dataset.serviceNiche);
   }
+});
+document.querySelector('#detail-related-grid').addEventListener('click', (event) => {
+  const card = event.target.closest('[data-product-detail]');
+  if (card) openProductDetail(card.dataset.productDetail);
 });
 function closeProductDetail() {
   document.querySelector('#product-detail-backdrop').classList.remove('open');
