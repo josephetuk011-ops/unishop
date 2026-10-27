@@ -23,7 +23,7 @@ const scrypt = promisify(scryptCallback);
 const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -50,7 +50,8 @@ const registerSchema = z.object({
   password: z.string().min(10).max(128),
   role: z.enum(registrationRoles),
   businessName: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(2).max(120).optional()),
-  niche: z.string().trim().max(80).optional()
+  niche: z.string().trim().max(80).optional(),
+  nin: z.string().trim().regex(/^\d{11}$/, 'Enter your 11-digit NIN.').optional()
 });
 const loginSchema = z.object({
   username: z.string().trim().min(1, 'Enter your username.').max(30, 'Enter your username.'),
@@ -173,6 +174,10 @@ if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || !proces
   throw new Error('JWT_SECRET and PAYSTACK_SECRET_KEY must be configured in production.');
 }
 
+if (process.env.NODE_ENV === 'production' && !process.env.MARKETPLACE_DATA_PATH) {
+  console.error('MARKETPLACE_DATA_PATH is not set: accounts and orders are stored on the container disk and will be lost on every deploy. Attach a volume and set MARKETPLACE_DATA_PATH and UPLOADS_DIRECTORY.');
+}
+
 function loadState(): MarketplaceState {
   try {
     const parsed = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
@@ -184,11 +189,43 @@ function loadState(): MarketplaceState {
 }
 
 let state = loadState();
+const ninKey = crypto.createHash('sha256').update(process.env.NIN_ENCRYPTION_KEY || process.env.JWT_SECRET || 'unishop-development-only-change-this-secret').digest();
+function encryptNin(nin: string) {
+  const iv = randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', ninKey, iv);
+  const encrypted = Buffer.concat([cipher.update(nin, 'utf8'), cipher.final()]);
+  return [iv, cipher.getAuthTag(), encrypted].map((part) => part.toString('base64')).join('.');
+}
+function decryptNin(value: string) {
+  const [iv, tag, encrypted] = value.split('.').map((part) => Buffer.from(part, 'base64'));
+  const decipher = crypto.createDecipheriv('aes-256-gcm', ninKey, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+}
+function storeNin(user: User, nin: string) {
+  user.ninEncrypted = encryptNin(nin);
+  user.ninLast4 = nin.slice(-4);
+  user.ninSubmittedAt = new Date().toISOString();
+}
+const requiresNin = (role: Role) => role === 'seller' || role === 'provider';
+
+let lastSnapshotDay = '';
+function snapshotData() {
+  const day = new Date().toISOString().slice(0, 10);
+  if (day === lastSnapshotDay || !fs.existsSync(dataPath)) return;
+  lastSnapshotDay = day;
+  const backupDirectory = path.join(path.dirname(dataPath), 'backups');
+  fs.mkdirSync(backupDirectory, { recursive: true });
+  fs.copyFileSync(dataPath, path.join(backupDirectory, `marketplace-${day}.json`), fs.constants.COPYFILE_EXCL | 0);
+  fs.readdirSync(backupDirectory).filter((name) => /^marketplace-\d{4}-\d{2}-\d{2}\.json$/.test(name)).sort().slice(0, -14).forEach((name) => fs.unlinkSync(path.join(backupDirectory, name)));
+}
+
 function saveState() {
   fs.mkdirSync(path.dirname(dataPath), { recursive: true });
   const temporaryPath = `${dataPath}.tmp`;
   fs.writeFileSync(temporaryPath, JSON.stringify(state, null, 2), { mode: 0o600 });
   fs.renameSync(temporaryPath, dataPath);
+  try { snapshotData(); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') console.error('Data snapshot failed:', (error as Error).message); }
 }
 
 function fail(status: number, message: string): never {
@@ -204,7 +241,7 @@ function asyncRoute(handler: (request: Request, response: Response) => Promise<u
 }
 
 function cleanUser(user: User) {
-  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, niche: user.niche, createdAt: user.createdAt };
+  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, niche: user.niche, ninLast4: user.ninLast4, createdAt: user.createdAt };
 }
 
 function publicBusinessProfile(userId: string | undefined) {
@@ -214,7 +251,7 @@ function publicBusinessProfile(userId: string | undefined) {
 }
 
 function hasCompleteBusinessProfile(user: User) {
-  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/'));
+  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/') && (!requiresNin(user.role) || user.ninLast4));
 }
 
 function legacyUsername(user: User) {
@@ -557,7 +594,7 @@ app.get('/admin', (_request, response) => {
 });
 app.get('/dashboard', (_request, response) => response.redirect('/dashboard.html'));
 
-app.get('/api/health', (_request, response) => response.json({ status: 'ok', payments: paystackSecret ? 'configured' : 'not-configured' }));
+app.get('/api/health', (_request, response) => response.json({ status: 'ok', payments: paystackSecret ? 'configured' : 'not-configured', storage: process.env.MARKETPLACE_DATA_PATH ? 'persistent-path' : 'ephemeral' }));
 app.post('/api/admin/login', (request: Request, response: Response) => {
   const expectedPassword = process.env.ADMIN_PASSWORD;
   const password = request.body?.password;
@@ -638,6 +675,13 @@ app.get('/api/admin/records', (request, response) => {
   records.sort((left, right) => (Date.parse(right.createdAt) || 0) - (Date.parse(left.createdAt) || 0));
   const filtered = search ? records.filter((record) => JSON.stringify(record).toLowerCase().includes(search)) : records;
   response.json({ kind, total: filtered.length, offset, limit, records: filtered.slice(offset, offset + limit) });
+});
+app.get('/api/admin/users/:id/nin', (request: Request, response: Response) => {
+  requireAdmin(request);
+  const user = state.users.find((member) => member.id === request.params.id);
+  if (!user?.ninEncrypted) fail(404, 'No NIN is on file for this account.');
+  auditAction('nin.viewed', 'railway-admin', { userId: user.id });
+  response.json({ nin: decryptNin(user.ninEncrypted), submittedAt: user.ninSubmittedAt });
 });
 app.patch('/api/admin/users/:id/suspension', (request: Request, response: Response) => {
   const admin = requireAdmin(request);
@@ -1023,7 +1067,7 @@ app.patch('/api/dispatch/jobs/:reference', (request: Request, response: Response
 app.post('/api/auth/register', asyncRoute(async (request: Request, response: Response) => {
   const parsed = registerSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
-  const { name, username, email, password, role, businessName, niche } = parsed.data;
+  const { name, username, email, password, role, businessName, niche, nin } = parsed.data;
   const sanitizedName = sanitizeText(name, '');
   const sanitizedUsername = sanitizeText(username, '').toLowerCase();
   const sanitizedEmail = sanitizeText(email, '').toLowerCase();
@@ -1033,6 +1077,7 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
   if (state.users.some((user) => (user.username || legacyUsername(user)).toLowerCase() === sanitizedUsername)) fail(409, 'That username is already taken.');
   if (state.users.some((user) => user.email.toLowerCase() === sanitizedEmail && user.role === role)) fail(409, 'This email already has an account for that role. Choose another role or sign in.');
   if (role !== 'customer' && (!sanitizedBusiness || sanitizedBusiness.length < 2)) fail(400, 'Enter your shop, service or delivery area name.');
+  if (requiresNin(role) && !nin) fail(400, 'Sellers and service providers must provide their 11-digit NIN.');
   const autoVerifyEmail = process.env.NODE_ENV === 'test' || process.env.AUTO_VERIFY_EMAIL !== 'false';
   const otpCode = autoVerifyEmail ? undefined : generateOtp();
   const user: User = {
@@ -1049,6 +1094,7 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
     otpCode,
     otpExpiresAt: autoVerifyEmail ? undefined : Date.now() + 10 * 60 * 1000
   };
+  if (requiresNin(role) && nin) storeNin(user, nin);
   state.users.push(user);
   saveState();
   const accessToken = tokenFor(user);
@@ -1147,7 +1193,8 @@ app.patch('/api/profile', (request: Request, response: Response) => {
     position: z.string().trim().min(2).max(80),
     placeOfOperation: z.string().trim().min(2).max(120),
     aboutMe: z.string().trim().min(20).max(1000),
-    profileImage: z.string().regex(/^\/uploads\/[\w.-]+$/)
+    profileImage: z.string().regex(/^\/uploads\/[\w.-]+$/),
+    nin: z.string().trim().regex(/^\d{11}$/, 'Enter your 11-digit NIN.').optional()
   });
   const parsed = profileSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
@@ -1157,6 +1204,7 @@ app.patch('/api/profile', (request: Request, response: Response) => {
   user.placeOfOperation = sanitizeText(parsed.data.placeOfOperation, '');
   user.aboutMe = sanitizeText(parsed.data.aboutMe, '');
   user.profileImage = parsed.data.profileImage;
+  if (parsed.data.nin && requiresNin(user.role)) storeNin(user, parsed.data.nin);
   saveState();
   auditAction('profile.updated', user.id, { role: user.role });
   response.json({ user: cleanUser(user), complete: hasCompleteBusinessProfile(user) });
