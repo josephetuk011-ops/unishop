@@ -154,16 +154,29 @@ function serviceForm() {
   return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><label class="form-field">Starting price (NGN)<input name="price" type="number" required min="500" step="100" placeholder="12000"></label><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 6 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · MP4 or WebM · maximum 30 seconds.</span><input name="video" type="file" accept="video/mp4,video/webm"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerForm() {
-  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option>Home</option><option>Fashion</option><option>Beauty</option><option>Tech</option><option>Food</option></select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><label class="form-field">Product photos <span class="form-help">1 to 3 photos. The first is the cover.</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label><div class="upload-preview full" id="product-preview"></div><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · MP4 or WebM · maximum 30 seconds.</span><input name="video" type="file" accept="video/mp4,video/webm"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
+  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option>Home</option><option>Fashion</option><option>Beauty</option><option>Tech</option><option>Food</option></select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><label class="form-field">Quantity available<input name="quantity" type="number" min="0" max="100000" step="1" required value="1"></label><label class="form-field">Sizes <span class="form-help">Optional. Number available per size, like S:5, M:3, L:2. When filled, the quantity above is ignored.</span><input name="sizes" maxlength="200" placeholder="S:5, M:3, L:2"></label><label class="form-field">Product photos <span class="form-help">1 to 3 photos. The first is the cover.</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label><div class="upload-preview full" id="product-preview"></div><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · MP4 or WebM · maximum 30 seconds.</span><input name="video" type="file" accept="video/mp4,video/webm"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerDashboard() {
   const { products, orders, metrics, user } = dashboardData;
   if (selectedView === 'profile') return profileForm();
-  if (selectedView === 'listings') return `${header('Your product catalogue', 'Manage the products customers can order.', '<button class="primary-button" data-open-form="product">+ Add product</button>')}${panel('Published products', `<div class="portfolio-grid">${products.length ? products.map((product) => `<article class="work-card"><img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}"><div class="work-card-body"><h3>${escapeHtml(product.name)}</h3><p>${formatMoney(product.price)} · ${escapeHtml(product.category)}</p></div></article>`).join('') : '<div class="empty-state">Add your first product to start your catalogue.</div>'}</div>`)}${productForm()}`;
+  if (selectedView === 'listings') return `${header('Your product catalogue', 'Manage the products customers can order.', '<button class="primary-button" data-open-form="product">+ Add product</button>')}${panel('Published products', `<div class="portfolio-grid">${products.length ? products.map((product) => `<article class="work-card"><img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}"><div class="work-card-body"><h3>${escapeHtml(product.name)}</h3><p>${formatMoney(product.price)} · ${escapeHtml(product.category)}</p><p class="stock-line">${stockText(product)}</p><button class="secondary-button" type="button" data-restock="${escapeHtml(product.id)}">Update stock</button></div></article>`).join('') : '<div class="empty-state">Add your first product to start your catalogue.</div>'}</div>`)}${productForm()}`;
   if (selectedView === 'activity') return `${header('Customer orders', 'Only confirmed Paystack payments appear as paid orders.')}${panel('Orders containing your products', table(['Order', 'Products', 'Total', 'Payment'], orderRows(orders), 'No paid orders yet.'))}`;
   if (selectedView === 'earnings') return `${header('Sales and earnings', 'Track paid product sales for your shop.') }<div class="metric-grid">${metric('Verified gross sales', formatMoney(metrics.grossSales), 'Before fees and refunds')}${metric('Paid orders', metrics.orderCount)}${metric('Active products', metrics.productCount)}</div>${moneyNote()}${panel('Paid order history', table(['Order', 'Products', 'Total', 'Payment'], orderRows(orders), 'No confirmed sales yet.'))}`;
   if (selectedView === 'earnings') return `${header('Sales and earnings', 'Track sales and withdraw available earnings.') }<div class="metric-grid">${metric('Verified gross sales', formatMoney(metrics.grossSales), 'Before commission and dispatch contribution')}${metric('Paid orders', metrics.orderCount)}${metric('Active products', metrics.productCount)}</div>${payoutPanel()}${panel('Paid order history', table(['Order', 'Products', 'Total', 'Payment'], orderRows(orders), 'No confirmed sales yet.'))}`;
   return `${header(`Welcome, ${user.name.split(' ')[0]}`, user.businessName || 'Vendors and Brands workspace', '<button class="primary-button" data-open-form="product">+ Add product</button>')}<div class="metric-grid">${metric('Active products', metrics.productCount)}${metric('Paid orders', metrics.orderCount)}${metric('Verified gross sales', formatMoney(metrics.grossSales), 'Before commission and dispatch contribution')}</div><div class="dashboard-grid">${panel('Recent orders', table(['Order', 'Products', 'Total', 'Payment'], orderRows(orders.slice(-5)), 'No paid orders yet.'))}${panel('Latest products', `<div class="compact-list">${products.slice(-4).reverse().map((product) => `<div class="compact-row"><img src="${escapeHtml(product.image)}" alt=""><span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.category)}</small></span><b>${formatMoney(product.price)}</b></div>`).join('') || '<div class="empty-state">Your products will appear here.</div>'}</div>`)}</div>${moneyNote()}${payoutPanel()}${productForm()}`;
+}
+function stockText(product) {
+  if (product.stock === undefined || product.stock === null) return 'Stock not tracked';
+  if (Array.isArray(product.sizes) && product.sizes.length) return `${product.stock} left · ${product.sizes.map((row) => `${escapeHtml(row.label)}: ${row.quantity}`).join(', ')}`;
+  return product.stock > 0 ? `${product.stock} left` : 'Sold out';
+}
+function parseSizes(text) {
+  const rows = String(text || '').split(',').map((part) => part.trim()).filter(Boolean);
+  return rows.map((row) => {
+    const [label, count] = row.split(/[:=]/).map((value) => value.trim());
+    if (!label || !/^\d+$/.test(count || '')) throw new Error('Write sizes like S:5, M:3, L:2.');
+    return { label, quantity: Number(count) };
+  });
 }
 function productForm() { return '<div class="panel-gap">' + sellerForm() + '</div>'; }
 function profileForm() {
@@ -311,6 +324,18 @@ document.addEventListener('click', (event) => {
 });
 
 document.addEventListener('click', async (event) => {
+  const restock = event.target.closest('[data-restock]');
+  if (restock) {
+    const input = window.prompt('New quantity available, or sizes like S:5, M:3, L:2');
+    if (input === null) return;
+    try {
+      const body = input.includes(':') || input.includes('=') ? { sizes: parseSizes(input) } : { quantity: input.trim() };
+      await api(`/api/seller/products/${restock.dataset.restock}/stock`, { method: 'PATCH', body: JSON.stringify(body) });
+      await refreshDashboard();
+      notify('Stock updated.');
+    } catch (error) { notify(error.message); }
+    return;
+  }
   const openForm = event.target.closest('[data-open-form]');
   if (openForm) {
     const form = document.querySelector(openForm.dataset.openForm === 'service' ? '#service-editor' : '#product-editor');
@@ -484,7 +509,7 @@ document.addEventListener('submit', async (event) => {
       if (photos.length < 1 || photos.length > 3) throw new Error('Choose 1 to 3 product photos.');
       const uploaded = await uploadFiles(photos);
       const uploadedVideo = await uploadShortVideo(form.elements.video.files[0]);
-      await api('/api/seller/products', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value, category: form.elements.category.value, description: form.elements.description.value, price: form.elements.price.value, images: uploaded.images, video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
+      await api('/api/seller/products', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value, category: form.elements.category.value, description: form.elements.description.value, price: form.elements.price.value, quantity: form.elements.quantity.value, sizes: parseSizes(form.elements.sizes.value), images: uploaded.images, video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
       selectedView = 'listings';
       await refreshDashboard();
       notify('Product published to your catalogue.');
