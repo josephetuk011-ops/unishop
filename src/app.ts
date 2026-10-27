@@ -13,6 +13,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import { NotificationInput, adminEmail, getVapidPublicKey, sendAdminPhone, sendEmail, sendPush } from './notifications';
 
 dotenv.config();
 
@@ -23,7 +24,7 @@ const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
 type Role = typeof roles[number];
 type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; };
-type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[] };
+type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
 const refreshTokenCookieName = 'unishop-refresh';
@@ -175,10 +176,10 @@ if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || !proces
 function loadState(): MarketplaceState {
   try {
     const parsed = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [], auditLogs: parsed.auditLogs || [] };
+    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [], auditLogs: parsed.auditLogs || [], notifications: parsed.notifications || [], pushSubscriptions: parsed.pushSubscriptions || [] };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    return { users: [], orders: [], bookings: [], serviceListings: [], sellerProducts: [], reviews: [], payouts: [], auditLogs: [] };
+    return { users: [], orders: [], bookings: [], serviceListings: [], sellerProducts: [], reviews: [], payouts: [], auditLogs: [], notifications: [], pushSubscriptions: [] };
   }
 }
 
@@ -301,6 +302,7 @@ async function completePayment(reference: string, payment: any) {
       }
     }
     saveState();
+    notifyOrderPaid(order);
   }
   return order;
 }
@@ -359,6 +361,84 @@ function releaseSettlement(order: any) {
 function payoutResponse(payout: any) {
   const { userId, transferCode, ...publicPayout } = payout;
   return publicPayout;
+}
+
+const formatNaira = (amount: number) => `₦${Number(amount).toLocaleString('en-NG')}`;
+
+// Delivers to the in-app inbox, the user's email and every phone/browser they enabled push on.
+// Failures are logged and never block the order, booking or payout that triggered them.
+function notifyUser(userId: string | undefined, input: NotificationInput) {
+  const user = userId ? state.users.find((item) => item.id === userId) : undefined;
+  if (!user) return;
+  state.notifications.push({ id: randomBytes(8).toString('hex'), userId: user.id, title: input.title, body: input.body, url: input.url, createdAt: new Date().toISOString(), read: false });
+  if (state.notifications.length > 5000) state.notifications.splice(0, state.notifications.length - 5000);
+  saveState();
+  sendEmail(user.email, input).catch((error) => console.error('Email notification failed:', error.message));
+  state.pushSubscriptions.filter((item) => item.userId === user.id).forEach((item) => {
+    sendPush(item.subscription, input).then((result) => {
+      if (result === 'gone') { state.pushSubscriptions = state.pushSubscriptions.filter((entry) => entry !== item); saveState(); }
+    }).catch((error) => console.error('Push notification failed:', error.message));
+  });
+}
+
+function notifyAdmin(input: NotificationInput) {
+  if (adminEmail()) sendEmail(adminEmail(), input).catch((error) => console.error('Admin email failed:', error.message));
+  sendAdminPhone(input).catch((error) => console.error('Admin phone notification failed:', error.message));
+}
+
+function notifyOrderPaid(order: any) {
+  const total = formatNaira(order.totalNaira || 0);
+  if (order.bookingId) {
+    const booking = state.bookings.find((item) => item.id === order.bookingId);
+    if (booking?.providerUserId) notifyUser(booking.providerUserId, { title: 'New paid booking', body: `${booking.service} in ${booking.neighbourhood} (${booking.time}) was paid for. Open your dashboard to accept it.`, url: '/dashboard.html' });
+    notifyAdmin({ title: 'Service booking paid', body: `${booking?.service || 'A service'} booking ${order.reference} was paid (${total}).` });
+    return;
+  }
+  const sellerIds = new Set<string>((order.items || []).map((item: any) => item.sellerUserId).filter(Boolean));
+  sellerIds.forEach((sellerId) => {
+    const names = (order.items || []).filter((item: any) => item.sellerUserId === sellerId).map((item: any) => `${item.quantity} x ${item.name}`).join(', ');
+    notifyUser(sellerId, { title: 'New order', body: `You have a paid order: ${names}. Delivery area: ${order.neighbourhood || 'Uyo'}.`, url: '/dashboard.html' });
+  });
+  notifyAdmin({ title: 'New order paid', body: `Order ${order.reference} was paid (${total}).` });
+}
+
+// Paystack has no escrow product. The customer's payment stays in the Unishop Paystack balance and in the
+// held ledger; once the customer confirms, each earner's net share is transferred to the bank recipient
+// created when they verified their account. Earners without a saved account keep the balance to withdraw later.
+async function transferToEarner(user: User, amountNaira: number, reference: string, reason: string) {
+  if (state.payouts.some((payout) => payout.reference === reference)) return;
+  const payout: any = { id: randomBytes(12).toString('hex'), userId: user.id, reference, amountNaira, auto: true, status: 'initializing', createdAt: new Date().toISOString() };
+  state.payouts.push(payout);
+  saveState();
+  try {
+    const transfer = await paystackRequest('transfer', { source: 'balance', amount: amountNaira * 100, recipient: user.payoutAccount!.recipientCode, reference, reason });
+    updatePayoutFromTransfer(payout, transfer);
+  } catch (error) {
+    console.error('Automatic payout failed:', (error as Error).message);
+    if (!['success', 'failed', 'reversed'].includes(payout.status)) { payout.status = 'needs-review'; payout.updatedAt = new Date().toISOString(); }
+  }
+  saveState();
+  const sent = payout.status === 'success' || payout.status === 'pending';
+  notifyUser(user.id, sent
+    ? { title: 'Payment on its way', body: `The customer confirmed. ${formatNaira(amountNaira)} is being sent to your ${user.payoutAccount!.bankName} account.`, url: '/dashboard.html' }
+    : { title: 'Payment released', body: `The customer confirmed. ${formatNaira(amountNaira)} is ready, but the automatic transfer needs your attention. Open Earnings to retry.`, url: '/dashboard.html' });
+}
+
+async function payOutReleasedOrder(order: any) {
+  const shares = new Map<string, number>();
+  (order.settlementLines || []).forEach((line: any) => shares.set(line.userId, (shares.get(line.userId) || 0) + Number(line.netNaira || 0)));
+  if (order.dispatchRiderId && Number(order.riderSettlementNaira) > 0) shares.set(order.dispatchRiderId, (shares.get(order.dispatchRiderId) || 0) + Number(order.riderSettlementNaira));
+  for (const [userId, amount] of shares) {
+    const user = state.users.find((item) => item.id === userId);
+    if (!user) continue;
+    const payable = Math.min(amount, availableBalanceFor(userId));
+    if (!user.payoutAccount?.recipientCode || !paystackSecret || payable < 100) {
+      notifyUser(userId, { title: 'Payment released', body: `The customer confirmed. ${formatNaira(amount)} is available in Earnings${user.payoutAccount ? '' : '. Add your bank account to receive it'}.`, url: '/dashboard.html' });
+      continue;
+    }
+    await transferToEarner(user, payable, `uni-auto-${order.id}-${userId}`.slice(0, 100), `Unishop order ${order.reference}`);
+  }
+  notifyAdmin({ title: 'Order confirmed', body: `Customer confirmed ${order.reference}. Earner payouts were released.` });
 }
 
 function updatePayoutFromTransfer(payout: any, transfer: any) {
@@ -615,6 +695,28 @@ app.post('/api/payout/account', asyncRoute(async (request, response) => {
   saveState();
   response.status(201).json({ account: { bankName: user.payoutAccount.bankName, accountName: user.payoutAccount.accountName, accountLast4: user.payoutAccount.accountLast4 } });
 }));
+app.get('/api/notifications/push-key', (_request, response) => response.json({ publicKey: getVapidPublicKey() }));
+app.get('/api/notifications', (request, response) => {
+  const user = requireUser(request);
+  const mine = state.notifications.filter((item) => item.userId === user.id).slice(-30).reverse();
+  response.json({ notifications: mine, unread: mine.filter((item) => !item.read).length, pushEnabled: Boolean(getVapidPublicKey()), subscribed: state.pushSubscriptions.some((item) => item.userId === user.id) });
+});
+app.post('/api/notifications/read', (request, response) => {
+  const user = requireUser(request);
+  state.notifications.forEach((item) => { if (item.userId === user.id) item.read = true; });
+  saveState();
+  response.json({ ok: true });
+});
+app.post('/api/notifications/subscribe', (request, response) => {
+  const user = requireUser(request);
+  const subscription = request.body?.subscription;
+  if (!getVapidPublicKey()) fail(503, 'Phone notifications are not configured yet.');
+  if (typeof subscription?.endpoint !== 'string' || !subscription.endpoint.startsWith('https://') || typeof subscription.keys?.p256dh !== 'string' || typeof subscription.keys?.auth !== 'string') fail(400, 'Invalid push subscription.');
+  state.pushSubscriptions = state.pushSubscriptions.filter((item) => item.subscription.endpoint !== subscription.endpoint);
+  state.pushSubscriptions.push({ userId: user.id, subscription: { endpoint: subscription.endpoint, keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth } }, createdAt: new Date().toISOString() });
+  saveState();
+  response.status(201).json({ ok: true });
+});
 app.get('/api/payouts', (request, response) => {
   const user = requireUser(request);
   response.json({ availableBalanceNaira: availableBalanceFor(user.id), payouts: state.payouts.filter((payout) => payout.userId === user.id).map(payoutResponse) });
@@ -852,6 +954,7 @@ app.post('/api/orders/:reference/confirm-delivery', (request: Request, response:
   order.orderStatus = 'completed';
   saveState();
   response.json({ order: safeOrder(order) });
+  void payOutReleasedOrder(order);
 });
 
 app.patch('/api/provider/bookings/:id', (request: Request, response: Response) => {
@@ -878,6 +981,7 @@ app.post('/api/bookings/:id/confirm-completion', (request: Request, response: Re
   if (!order || !releaseSettlement(order)) fail(409, 'This booking has already been confirmed or has no payable settlement.');
   saveState();
   response.json({ booking });
+  void payOutReleasedOrder(order);
 });
 
 app.post('/api/services/:id/reviews', (request: Request, response: Response) => {
@@ -1060,6 +1164,8 @@ app.post('/api/bookings', (request: Request, response: Response) => {
   const booking = { id: randomBytes(12).toString('hex'), userId: user.id, providerUserId, providerId, provider: provider.provider || provider.name, service: provider.title || provider.trade, amountNaira: provider.price, neighbourhood: neighbourhood.trim(), time, note: typeof note === 'string' ? note.slice(0, 1000) : '', status: 'requested', paymentStatus: 'unpaid', createdAt: new Date().toISOString() };
   state.bookings.push(booking);
   saveState();
+  notifyUser(providerUserId, { title: 'New booking request', body: `${user.name} requested ${booking.service} in ${booking.neighbourhood} (${booking.time}). It becomes confirmed once they pay.`, url: '/dashboard.html' });
+  notifyAdmin({ title: 'New booking request', body: `${user.name} requested ${booking.service} from ${booking.provider}.` });
   response.status(201).json({ booking });
 });
 

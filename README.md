@@ -56,3 +56,12 @@ The included `render.yaml` creates a web service with a persistent disk for mark
 After the first deploy, configure the Paystack webhook URL as `https://<your-render-service>.onrender.com/api/payments/webhook`, using the same test/live mode as the configured key. Enable Transfers and configure the intended OTP policy in Paystack. Check `/api/health` shows payments `configured`, then test a small checkout, customer confirmation, and withdrawal using test mode before sharing the site.
 
 I cannot trigger the public deployment from the current workspace because no Git remote or hosting account is connected. Render's persistent disk requires a paid instance and is single-instance storage; for reliable production scale, replace the local JSON store and disk uploads with a managed transactional database and object storage before accepting real customer traffic.
+## Notifications and automatic payouts
+
+When a booking is requested or an order/booking is paid, the vendor or service provider gets an in-app notification (dashboard, Earnings view), an email and a phone push; the admin gets an email and a phone alert. Each channel switches on with environment variables and is skipped when unset:
+
+- `RESEND_API_KEY`, `EMAIL_FROM`: email through Resend. `ADMIN_EMAIL`: where admin emails go.
+- `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`: browser/phone push for vendors and providers. Generate keys with `npx web-push generate-vapid-keys`. Users tap "Turn on phone notifications" in their dashboard (on iPhone the site must be added to the Home Screen first).
+- `ADMIN_NTFY_TOPIC` (optional `NTFY_SERVER`, `NTFY_TOKEN`): admin phone alerts through the free ntfy app. Use a long random topic name.
+
+Paystack has no escrow product. Customer payments land in your Paystack balance and the Unishop ledger marks them held. A Paystack transfer recipient code is created when an earner verifies a bank account (Paystack needs the account number and bank, so it cannot be created at sign-in). When the customer confirms delivery or completion, each earner's net share is sent automatically to that recipient. Earners without a saved bank account, or whose transfer fails (for example Paystack balance not yet settled, or transfer OTP enabled), keep the amount in Earnings and can withdraw or retry there.
