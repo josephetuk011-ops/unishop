@@ -23,6 +23,23 @@ const scrypt = promisify(scryptCallback);
 const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
 // Dispatch rider sign-in is paused: the admin updates delivery tracking instead. Set DISPATCH_SIGNIN_ENABLED=true to bring riders back.
+const productCategoryGroups: { group: string; items: string[] }[] = [
+  { group: 'Fashion and accessories', items: ["Women's clothing", "Men's clothing", "Kids' clothing", 'Shoes and sandals', 'Bags and luggage', 'Jewelry and watches', 'Fabrics and traditional wear', 'Hair, wigs and extensions', 'Caps, belts and accessories', 'Uniforms and workwear'] },
+  { group: 'Beauty and health', items: ['Skincare', 'Makeup', 'Perfumes and fragrances', 'Hair care', 'Nail and beauty tools', 'Wellness and supplements', 'Medical and first aid'] },
+  { group: 'Phones and electronics', items: ['Phones and tablets', 'Phone accessories', 'Laptops and computers', 'Computer accessories', 'Headphones and audio', 'TVs and home entertainment', 'Cameras and drones', 'Gaming', 'Power banks, solar and batteries', 'Smart watches and gadgets'] },
+  { group: 'Home and living', items: ['Furniture', 'Kitchenware and cookware', 'Home decor', 'Bedding and linen', 'Lighting', 'Cleaning and laundry', 'Storage and organisation', 'Small appliances', 'Large appliances and generators', 'Garden and outdoor', 'Tools and hardware'] },
+  { group: 'Food and drinks', items: ['Fresh produce', 'Groceries and pantry', 'Spices and seasonings', 'Snacks and confectionery', 'Beverages and water', 'Baked goods', 'Meat, fish and frozen foods', 'Local and traditional foods'] },
+  { group: 'Baby, kids and school', items: ['Baby care', 'Toys and games', 'School supplies', 'Books and stationery'] },
+  { group: 'Sports and fitness', items: ['Exercise equipment', 'Sportswear and gear', 'Outdoor and camping'] },
+  { group: 'Vehicles', items: ['Car parts and accessories', 'Tyres and batteries', 'Motorcycle and bicycle parts', 'Car care and oils'] },
+  { group: 'Building and farming', items: ['Building materials', 'Electrical supplies', 'Plumbing supplies', 'Paints and finishes', 'Industrial and safety equipment', 'Farm and agro inputs'] },
+  { group: 'Arts, gifts and events', items: ['Handmade crafts', 'Art and paintings', 'Musical instruments', 'Party and event supplies', 'Gifts and flowers', 'Religious items'] },
+  { group: 'Pets and other', items: ['Pet food and supplies', 'Other'] }
+];
+// Older products use these five broad categories; they stay valid but are no longer offered to vendors.
+const legacyProductCategories = ['Home', 'Fashion', 'Beauty', 'Tech', 'Food'];
+const validProductCategories = new Set([...productCategoryGroups.flatMap((entry) => entry.items), ...legacyProductCategories]);
+
 const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED === 'true';
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
@@ -939,6 +956,7 @@ app.post('/api/payouts/:reference/retry', asyncRoute(async (request, response) =
   saveState();
   response.json({ payout: payoutResponse(payout), availableBalanceNaira: availableBalanceFor(user.id) });
 }));
+app.get('/api/product-categories', (_request, response) => response.json({ groups: productCategoryGroups }));
 app.get('/api/products', (_request, response) => response.json([
   ...catalog,
   ...state.sellerProducts.filter((product) => !isAccountSuspended(product.userId)).map((product) => {
@@ -1130,7 +1148,7 @@ app.post('/api/seller/products', (request: Request, response: Response) => {
   const { name, category, description, price, image, images, video, videoDuration } = request.body || {};
   const stockFields = parseStock(request.body);
   if (typeof name !== 'string' || name.trim().length < 3 || name.length > 100) fail(400, 'Enter a product name.');
-  if (!['Home', 'Fashion', 'Beauty', 'Tech', 'Food'].includes(category)) fail(400, 'Choose a valid product category.');
+  if (typeof category !== 'string' || !validProductCategories.has(category)) fail(400, 'Choose a valid product category.');
   if (typeof description !== 'string' || description.trim().length < 5) fail(400, 'Add a short product description.');
   if (!Number.isInteger(Number(price)) || Number(price) < 100 || Number(price) > 100000000) fail(400, 'Enter a valid price in Naira.');
   const uploadPath = /^\/uploads\/[\w.-]+$/;
