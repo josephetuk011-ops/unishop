@@ -36,6 +36,11 @@ const server = app.listen(0, async () => {
     const seller = await send('POST', '/api/auth/register', { name: 'Stock Seller', username: `stk${stamp}`, email: `stk${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Stock Shop' });
     const st = seller.data.token;
     assert.equal((await send('PATCH', '/api/profile', { name: 'Stock Seller', businessName: 'Stock Shop', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'A local shop selling clothes around Uyo.', profileImage: '/uploads/p.jpg' }, st)).status, 200);
+    const cats = (await send('GET', '/api/product-categories')).data.groups;
+    assert.ok(cats.flatMap((g) => g.items).length >= 60, 'comprehensive category list');
+    assert.equal((await send('POST', '/api/seller/products', { category: 'Made-up category', description: 'A nice shirt for you.', price: 5000, image: '/uploads/shirt.jpg', name: 'Bad category', quantity: 1 }, st)).status, 400);
+    const sneakers = await send('POST', '/api/seller/products', { category: 'Shoes and sandals', description: 'Comfortable sneakers.', price: 9000, image: '/uploads/shirt.jpg', name: 'Sneakers', quantity: 4 }, st);
+    assert.equal(sneakers.data.product.category, 'Shoes and sandals');
     const base_ = { category: 'Fashion', description: 'A nice shirt for you.', price: 5000, image: '/uploads/shirt.jpg' };
     assert.equal((await send('POST', '/api/seller/products', { ...base_, name: 'Bad sizes', sizes: [{ label: 'S', quantity: -1 }] }, st)).status, 400);
     const shirt = (await send('POST', '/api/seller/products', { ...base_, name: 'Sized shirt', sizes: [{ label: 'S', quantity: 2 }, { label: 'M', quantity: 1 }] }, st)).data.product;

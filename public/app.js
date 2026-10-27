@@ -129,7 +129,18 @@ function renderVisionTicker() {
   }));
 }
 
+function renderCategoryPills() {
+  const pills = document.querySelector('.category-pills');
+  if (!pills) return;
+  const legacyLabels = { Home: 'Home & living', Fashion: 'Fashion', Beauty: 'Beauty', Tech: 'Tech', Food: 'Food & pantry' };
+  const present = [...new Set(products.map((product) => product.category).filter(Boolean))].sort((a, b) => (legacyLabels[a] || a).localeCompare(legacyLabels[b] || b));
+  if (selectedCategory !== 'All' && !present.includes(selectedCategory)) selectedCategory = 'All';
+  const count = pills.querySelector('[data-category="All"] span')?.textContent || String(products.length);
+  pills.innerHTML = `<button class="category-pill${selectedCategory === 'All' ? ' selected' : ''}" data-category="All">All categories <span>${count}</span></button>` + present.map((name) => `<button class="category-pill${selectedCategory === name ? ' selected' : ''}" data-category="${escapeShortText(name)}">${escapeShortText(legacyLabels[name] || name)}</button>`).join('');
+}
+
 function renderProducts() {
+  renderCategoryPills();
   const goods = products.filter((product) => {
     const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
     const matchesSearch = `${product.name} ${product.seller} ${product.brandProfile?.businessName || ''} ${product.category}`.toLowerCase().includes(searchTerm);
@@ -559,14 +570,16 @@ document.querySelector('#search-input').addEventListener('input', (event) => {
   renderProducts();
 });
 
-document.querySelectorAll('.category-pill').forEach((pill) => pill.addEventListener('click', () => {
+document.querySelector('.category-pills').addEventListener('click', (event) => {
+  const pill = event.target.closest('.category-pill');
+  if (!pill) return;
   selectedCategory = pill.dataset.category;
   activeNiche = 'All';
   searchTerm = '';
   document.querySelector('#search-input').value = '';
   document.querySelectorAll('.category-pill').forEach((item) => item.classList.toggle('selected', item === pill));
   renderProducts();
-}));
+});
 document.querySelectorAll('[data-nav-mode]').forEach((link) => link.addEventListener('click', (event) => {
   event.preventDefault();
   const mode = link.dataset.navMode;
