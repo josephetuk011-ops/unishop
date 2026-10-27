@@ -487,10 +487,10 @@ function closeCheckout() {
   document.body.style.overflow = '';
 }
 
-function setPaymentStatus(state, reference, details = '') {
+function setPaymentStatus(state, reference, details = '', canTrack = false) {
   const labels = {
     checking: ['PAYMENT UPDATE', 'Checking your payment', 'We are confirming the transaction securely with Paystack.', '…'],
-    paid: ['PAYMENT CONFIRMED', 'Your order is in!', 'Payment was verified. Unishop will prepare your order for delivery in Uyo.', '✓'],
+    paid: ['PAYMENT CONFIRMED', 'Payment successfully made', 'Your payment was verified and your order is in. Unishop will prepare it for delivery in Uyo. Track it at any time from your workspace.', '✓'],
     pending: ['PAYMENT NOT CONFIRMED', 'Your order is still unpaid', details || 'No successful payment was confirmed. Your bag is still saved so you can try again.', '!'],
     error: ['PAYMENT CHECK FAILED', 'We could not verify that yet', details || 'Your order has not been marked as paid. Please retry the payment or contact support with this reference.', '!']
   }[state];
@@ -499,6 +499,9 @@ function setPaymentStatus(state, reference, details = '') {
   document.querySelector('#payment-status-description').textContent = labels[2];
   document.querySelector('#payment-status-icon').textContent = labels[3];
   document.querySelector('#payment-reference').textContent = reference ? `Reference: ${reference}` : '';
+  const trackButton = document.querySelector('#payment-track-product');
+  trackButton.hidden = !(state === 'paid' && canTrack);
+  trackButton.href = localStorage.getItem('unishop-token') ? '/dashboard.html#overview' : '/?signin=1';
   document.querySelector('#payment-status-backdrop').classList.add('open');
   loadReward();
   loadProducts();
@@ -552,7 +555,7 @@ async function verifyPaymentReturn() {
       localStorage.setItem('marketday-cart', JSON.stringify(cart));
       renderCart();
       document.querySelector('#checkout-form').reset();
-      setPaymentStatus('paid', reference);
+      setPaymentStatus('paid', reference, '', result.order.type !== 'service');
     } else {
       setPaymentStatus('pending', reference);
     }
