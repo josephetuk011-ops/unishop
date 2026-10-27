@@ -42,7 +42,8 @@ const server = app.listen(0, async () => {
   const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
   const password = 'A-secure-test-password';
   try {
-    const provider = await send('POST', '/api/auth/register', { name: 'Pro Vider', username: 'notifprovider', email: 'provider@example.com', password, role: 'provider', nin: '12345678901', businessName: 'Notif Barbing', niche: 'Barbing' });
+    const provider = await send('POST', '/api/auth/register', { name: 'Pro Vider', username: 'notifprovider', email: 'provider@example.com', password, role: 'provider', businessName: 'Notif Barbing', niche: 'Barbing' });
+    await send('POST', '/api/profile/nin', { nin: '12345678903' }, provider.data.token);
     await send('PATCH', '/api/profile', { name: 'Pro Vider', businessName: 'Notif Barbing', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'Barbing appointments and home visits for customers across Uyo.', profileImage: '/uploads/p.jpg' }, provider.data.token);
     const listing = await send('POST', '/api/provider/listings', { niche: 'Barbing', title: 'Fades', description: 'Barbing service with home visits in Uyo.', price: 18000, portfolio: ['/uploads/x.jpg'] }, provider.data.token);
     const customer = await send('POST', '/api/auth/register', { name: 'Cus Tomer', username: 'notifcustomer', email: 'buyer@example.com', password, role: 'customer' });

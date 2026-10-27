@@ -65,9 +65,10 @@ const server = app.listen(0, async () => {
     assert.equal(invalidProvider.status, 400);
 
     const provider = await send('POST', '/api/auth/register', {
-      name: 'Test Provider', username: 'uyoprovider', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'provider', nin: '12345678901', businessName: 'Test Barbing Studio', niche: 'Barbing'
+      name: 'Test Provider', username: 'uyoprovider', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'provider', businessName: 'Test Barbing Studio', niche: 'Barbing'
     });
     assert.equal(provider.status, 201);
+    assert.equal((await send('POST', '/api/profile/nin', { nin: '12345678901' }, provider.data.token)).status, 200);
     const providerLogin = await send('POST', '/api/auth/login', { username: 'uyoprovider', password: 'A-secure-test-password' });
     assert.equal(providerLogin.data.user.role, 'provider');
     const providerProfile = await send('PATCH', '/api/profile', {
@@ -92,9 +93,10 @@ const server = app.listen(0, async () => {
     assert.equal(booking.status, 201);
 
     const seller = await send('POST', '/api/auth/register', {
-      name: 'Test Seller', username: 'uyoseller', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'seller', nin: '12345678901', businessName: 'Test Uyo Store'
+      name: 'Test Seller', username: 'uyoseller', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'seller', businessName: 'Test Uyo Store'
     });
     assert.equal(seller.status, 201);
+    assert.equal((await send('POST', '/api/profile/nin', { nin: '12345678902' }, seller.data.token)).status, 200);
     assert.equal((await send('POST', '/api/auth/login', { username: 'uyoseller', password: 'A-secure-test-password' })).data.user.role, 'seller');
     const sellerProfile = await send('PATCH', '/api/profile', {
       name: 'Test Seller', businessName: 'Test Uyo Store', position: 'Owner', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'A local shop sharing practical home goods with customers around Uyo.', profileImage: '/uploads/seller-profile.jpg'

@@ -23,7 +23,7 @@ const scrypt = promisify(scryptCallback);
 const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -50,8 +50,7 @@ const registerSchema = z.object({
   password: z.string().min(10).max(128),
   role: z.enum(registrationRoles),
   businessName: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(2).max(120).optional()),
-  niche: z.string().trim().max(80).optional(),
-  nin: z.string().trim().regex(/^\d{11}$/, 'Enter your 11-digit NIN.').optional()
+  niche: z.string().trim().max(80).optional()
 });
 const loginSchema = z.object({
   username: z.string().trim().min(1, 'Enter your username.').max(30, 'Enter your username.'),
@@ -208,6 +207,36 @@ function storeNin(user: User, nin: string) {
   user.ninSubmittedAt = new Date().toISOString();
 }
 const requiresNin = (role: Role) => role === 'seller' || role === 'provider';
+const ninVerifierConfigured = () => Boolean(process.env.DOJAH_APP_ID && process.env.DOJAH_SECRET_KEY);
+const nameTokens = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[^a-z\s'-]/g, ' ').split(/[\s'-]+/).filter((token) => token.length > 1);
+// Looks the NIN up with Dojah (NIMC data) and compares the holder's names with the account name.
+// Never throws: provider trouble leaves the NIN pending so an admin can decide.
+async function verifyNinWithProvider(user: User, nin: string): Promise<{ status: 'pending' | 'verified' | 'failed'; note: string }> {
+  if (!ninVerifierConfigured()) return { status: 'pending', note: 'Submitted. Waiting for review.' };
+  try {
+    const base = (process.env.DOJAH_BASE_URL || 'https://api.dojah.io').replace(/\/$/, '');
+    const res = await fetch(`${base}/api/v1/kyc/nin?nin=${encodeURIComponent(nin)}`, {
+      headers: { Authorization: process.env.DOJAH_SECRET_KEY as string, AppId: process.env.DOJAH_APP_ID as string },
+      signal: AbortSignal.timeout(15000)
+    });
+    if (res.status === 404 || res.status === 400) return { status: 'failed', note: 'This NIN was not found. Check the number and try again.' };
+    if (!res.ok) {
+      console.error(`NIN verification provider returned ${res.status}`);
+      return { status: 'pending', note: 'Automatic check is unavailable right now. Submitted for review.' };
+    }
+    const body: any = await res.json();
+    const entity = body?.entity;
+    if (!entity) return { status: 'pending', note: 'Automatic check returned no record. Submitted for review.' };
+    const holder = new Set(nameTokens(`${entity.first_name || ''} ${entity.middle_name || ''} ${entity.last_name || ''}`));
+    const mine = nameTokens(user.name);
+    const matched = mine.filter((token) => holder.has(token)).length;
+    if (mine.length && matched >= Math.min(2, mine.length)) return { status: 'verified', note: 'Verified against NIMC records.' };
+    return { status: 'failed', note: 'The name on this NIN does not match the name on your account. Update your account name or use your own NIN.' };
+  } catch (error) {
+    console.error('NIN verification failed', (error as Error).message);
+    return { status: 'pending', note: 'Automatic check is unavailable right now. Submitted for review.' };
+  }
+}
 
 let lastSnapshotDay = '';
 function snapshotData() {
@@ -241,7 +270,7 @@ function asyncRoute(handler: (request: Request, response: Response) => Promise<u
 }
 
 function cleanUser(user: User) {
-  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, niche: user.niche, ninLast4: user.ninLast4, createdAt: user.createdAt };
+  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, niche: user.niche, ninLast4: user.ninLast4, ninStatus: user.ninLast4 ? (user.ninStatus || 'pending') : undefined, ninVerifiedAt: user.ninVerifiedAt, ninNote: user.ninNote, createdAt: user.createdAt };
 }
 
 function publicBusinessProfile(userId: string | undefined) {
@@ -251,7 +280,7 @@ function publicBusinessProfile(userId: string | undefined) {
 }
 
 function hasCompleteBusinessProfile(user: User) {
-  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/') && (!requiresNin(user.role) || user.ninLast4));
+  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/') && (!requiresNin(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
 
 function legacyUsername(user: User) {
@@ -1067,7 +1096,7 @@ app.patch('/api/dispatch/jobs/:reference', (request: Request, response: Response
 app.post('/api/auth/register', asyncRoute(async (request: Request, response: Response) => {
   const parsed = registerSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
-  const { name, username, email, password, role, businessName, niche, nin } = parsed.data;
+  const { name, username, email, password, role, businessName, niche } = parsed.data;
   const sanitizedName = sanitizeText(name, '');
   const sanitizedUsername = sanitizeText(username, '').toLowerCase();
   const sanitizedEmail = sanitizeText(email, '').toLowerCase();
@@ -1077,7 +1106,6 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
   if (state.users.some((user) => (user.username || legacyUsername(user)).toLowerCase() === sanitizedUsername)) fail(409, 'That username is already taken.');
   if (state.users.some((user) => user.email.toLowerCase() === sanitizedEmail && user.role === role)) fail(409, 'This email already has an account for that role. Choose another role or sign in.');
   if (role !== 'customer' && (!sanitizedBusiness || sanitizedBusiness.length < 2)) fail(400, 'Enter your shop, service or delivery area name.');
-  if (requiresNin(role) && !nin) fail(400, 'Sellers and service providers must provide their 11-digit NIN.');
   const autoVerifyEmail = process.env.NODE_ENV === 'test' || process.env.AUTO_VERIFY_EMAIL !== 'false';
   const otpCode = autoVerifyEmail ? undefined : generateOtp();
   const user: User = {
@@ -1094,7 +1122,6 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
     otpCode,
     otpExpiresAt: autoVerifyEmail ? undefined : Date.now() + 10 * 60 * 1000
   };
-  if (requiresNin(role) && nin) storeNin(user, nin);
   state.users.push(user);
   saveState();
   const accessToken = tokenFor(user);
@@ -1184,6 +1211,38 @@ app.post('/api/auth/refresh', (request: Request, response: Response) => {
   response.json({ token: accessToken, user: cleanUser(user) });
 });
 
+app.post('/api/profile/nin', asyncRoute(async (request: Request, response: Response) => {
+  const user = requireUser(request);
+  if (!requiresNin(user.role)) fail(403, 'NIN verification is only needed for sellers and service providers.');
+  if (user.ninStatus === 'verified') fail(409, 'Your NIN is already verified.');
+  const parsed = z.object({ nin: z.string().trim().regex(/^\d{11}$/, 'Enter your 11-digit NIN.') }).safeParse(request.body || {});
+  if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
+  const { nin } = parsed.data;
+  const taken = state.users.some((member) => member.id !== user.id && member.ninEncrypted && member.ninStatus !== 'failed' && (() => { try { return decryptNin(member.ninEncrypted as string) === nin; } catch { return false; } })());
+  if (taken) fail(409, 'This NIN is already linked to another account.');
+  const result = await verifyNinWithProvider(user, nin);
+  storeNin(user, nin);
+  user.ninStatus = result.status;
+  user.ninNote = result.note;
+  user.ninVerifiedAt = result.status === 'verified' ? new Date().toISOString() : undefined;
+  saveState();
+  auditAction('nin.submitted', user.id, { status: result.status, automatic: ninVerifierConfigured() });
+  if (result.status === 'verified') notifyUser(user.id, { title: 'NIN verified', body: 'Your identity is verified. You can publish listings.', url: '/dashboard.html' });
+  response.json({ user: cleanUser(user), status: result.status, note: result.note, complete: hasCompleteBusinessProfile(user), automatic: ninVerifierConfigured() });
+}));
+app.patch('/api/admin/users/:id/nin-status', (request: Request, response: Response) => {
+  const admin = requireAdmin(request);
+  const user = state.users.find((member) => member.id === request.params.id);
+  if (!user?.ninEncrypted) fail(404, 'No NIN is on file for this account.');
+  const parsed = z.object({ status: z.enum(['verified', 'failed']), note: z.string().trim().max(200).optional() }).safeParse(request.body || {});
+  if (!parsed.success) fail(400, 'Choose verified or failed.');
+  user.ninStatus = parsed.data.status;
+  user.ninVerifiedAt = parsed.data.status === 'verified' ? new Date().toISOString() : undefined;
+  user.ninNote = parsed.data.note || (parsed.data.status === 'verified' ? 'Approved by Unishop review.' : 'Rejected by Unishop review. Check your NIN and resubmit.');
+  saveState();
+  auditAction('nin.reviewed', admin.id, { userId: user.id, status: parsed.data.status });
+  response.json({ user: cleanUser(user) });
+});
 app.patch('/api/profile', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (!['seller', 'provider', 'dispatch'].includes(user.role)) fail(403, 'Business profiles are only available to sellers, service providers and dispatch riders.');
@@ -1193,8 +1252,7 @@ app.patch('/api/profile', (request: Request, response: Response) => {
     position: z.string().trim().min(2).max(80),
     placeOfOperation: z.string().trim().min(2).max(120),
     aboutMe: z.string().trim().min(20).max(1000),
-    profileImage: z.string().regex(/^\/uploads\/[\w.-]+$/),
-    nin: z.string().trim().regex(/^\d{11}$/, 'Enter your 11-digit NIN.').optional()
+    profileImage: z.string().regex(/^\/uploads\/[\w.-]+$/)
   });
   const parsed = profileSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
@@ -1204,7 +1262,6 @@ app.patch('/api/profile', (request: Request, response: Response) => {
   user.placeOfOperation = sanitizeText(parsed.data.placeOfOperation, '');
   user.aboutMe = sanitizeText(parsed.data.aboutMe, '');
   user.profileImage = parsed.data.profileImage;
-  if (parsed.data.nin && requiresNin(user.role)) storeNin(user, parsed.data.nin);
   saveState();
   auditAction('profile.updated', user.id, { role: user.role });
   response.json({ user: cleanUser(user), complete: hasCompleteBusinessProfile(user) });
