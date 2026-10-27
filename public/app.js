@@ -318,9 +318,6 @@ function updateAuthForm() {
   document.querySelector('.auth-email-field').hidden = !registering;
   document.querySelector('.auth-business-field').hidden = !registering || !roleNeedsBusiness;
   document.querySelector('.auth-niche-field').hidden = !registering || selectedAuthRole !== 'provider';
-  const needsNin = registering && ['seller', 'provider'].includes(selectedAuthRole);
-  document.querySelector('.auth-nin-field').hidden = !needsNin;
-  authForm.elements.nin.required = needsNin;
   document.querySelector('.business-prompt').textContent = selectedAuthRole === 'dispatch' ? 'Preferred delivery area' : 'Shop or service name';
   authForm.elements.business.placeholder = selectedAuthRole === 'dispatch' ? 'e.g. Ewet Housing, Uyo' : 'Name customers will see';
   authForm.elements.username.placeholder = 'e.g. ada_uyo';
@@ -652,7 +649,6 @@ authForm.addEventListener('submit', async (event) => {
       const businessName = form.elements.business.value.trim();
       if (businessName) credentials.businessName = businessName;
       if (selectedAuthRole === 'provider') credentials.niche = form.elements.niche.value;
-      if (['seller', 'provider'].includes(selectedAuthRole)) credentials.nin = form.elements.nin.value.trim();
     }
     const result = await apiRequest(`/api/auth/${registering ? 'register' : 'login'}`, {
       method: 'POST',

@@ -1,6 +1,9 @@
 import request from 'supertest';
 import app from '../src/app';
 
+let ninCounter = 0;
+const uniqueNin = () => String(30000000000 + (Date.now() % 1000000) * 1000 + (ninCounter++ % 1000));
+
 describe('E-Marketplace Application', () => {
   it('should return a 200 status for the home route', async () => {
     const response = await request(app).get('/');
@@ -69,10 +72,10 @@ describe('E-Marketplace Application', () => {
         password: 'providerpassword123',
         role: 'provider',
         businessName: 'Test Barbershop',
-        nin: '12345678901',
         niche: 'Barbing'
       });
       expect(registration.status).toBe(201);
+      expect((await request(app).post('/api/profile/nin').set('Authorization', `Bearer ${registration.body.token}`).send({ nin: uniqueNin() })).status).toBe(200);
       const profile = await request(app).patch('/api/profile')
         .set('Authorization', `Bearer ${registration.body.token}`)
         .send({ name: 'Marketplace Provider', businessName: 'Test Barbershop', position: 'Owner and barber', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'I offer reliable barber appointments for homes and businesses across Uyo.', profileImage: '/uploads/test-profile.jpg' });
@@ -123,8 +126,8 @@ describe('E-Marketplace Application', () => {
       expect(users.body.total).toBe(1);
       expect(users.body.records[0].suspensionReason).toBe('Repeated customer safety reports');
       const audit = await request(app).get(`/api/admin/records?kind=audit&search=${registration.body.user.id}`).set('Authorization', `Bearer ${adminToken}`);
-      expect(audit.body.total).toBe(2);
-      expect(audit.body.records.map((entry: { action: string }) => entry.action)).toEqual(expect.arrayContaining(['profile.updated', 'account.suspended']));
+      expect(audit.body.total).toBe(3);
+      expect(audit.body.records.map((entry: { action: string }) => entry.action)).toEqual(expect.arrayContaining(['nin.submitted', 'profile.updated', 'account.suspended']));
 
       const restore = await request(app).patch(`/api/admin/users/${registration.body.user.id}/suspension`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -156,15 +159,39 @@ describe('E-Marketplace Application', () => {
     expect(login.body.user.role).toBe('customer');
   });
 
-  it('requires an 11-digit NIN from sellers and providers and never returns it', async () => {
+  it('does not ask for a NIN at signup; verifies it from the profile with the provider and never returns it', async () => {
     const username = `nin${Date.now()}`;
-    const body = { name: 'Nin Seller', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Nin Shop' };
-    expect((await request(app).post('/api/auth/register').send(body)).status).toBe(400);
-    expect((await request(app).post('/api/auth/register').send({ ...body, nin: '123' })).status).toBe(400);
-    const ok = await request(app).post('/api/auth/register').send({ ...body, nin: '12345678901' });
-    expect(ok.status).toBe(201);
-    expect(ok.body.user.ninLast4).toBe('8901');
-    expect(JSON.stringify(ok.body)).not.toContain('12345678901');
+    const nin = uniqueNin();
+    const body = { name: 'Ada Okon', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Nin Shop' };
+    const reg = await request(app).post('/api/auth/register').send(body);
+    expect(reg.status).toBe(201);
+    const auth = { Authorization: `Bearer ${reg.body.token}` };
+    expect((await request(app).post('/api/profile/nin').set(auth).send({ nin: '123' })).status).toBe(400);
+    const pending = await request(app).post('/api/profile/nin').set(auth).send({ nin: nin });
+    expect(pending.body.status).toBe('pending');
+    expect(pending.body.user.ninLast4).toBe(nin.slice(-4));
+    expect(JSON.stringify(pending.body)).not.toContain(nin);
+    process.env.DOJAH_APP_ID = 'app'; process.env.DOJAH_SECRET_KEY = 'secret';
+    const realFetch = global.fetch;
+    const entity = { current: { first_name: 'Someone', last_name: 'Else' } };
+    global.fetch = (async (url: any, init: any) => {
+      if (String(url).includes('/api/v1/kyc/nin')) {
+        expect(init.headers.Authorization).toBe('secret');
+        return new Response(JSON.stringify({ entity: entity.current }), { status: 200 });
+      }
+      return realFetch(url, init);
+    }) as any;
+    try {
+      const failed = await request(app).post('/api/profile/nin').set(auth).send({ nin: nin });
+      expect(failed.body.status).toBe('failed');
+      entity.current = { first_name: 'Ada', last_name: 'Okon' };
+      const verified = await request(app).post('/api/profile/nin').set(auth).send({ nin: nin });
+      expect(verified.body.status).toBe('verified');
+      expect((await request(app).post('/api/profile/nin').set(auth).send({ nin: nin })).status).toBe(409);
+    } finally {
+      global.fetch = realFetch;
+      delete process.env.DOJAH_APP_ID; delete process.env.DOJAH_SECRET_KEY;
+    }
   });
 
   it.each([
@@ -180,11 +207,11 @@ describe('E-Marketplace Application', () => {
       password: 'marketplacepassword123',
       role,
       businessName,
-      niche,
-      ...(role === 'seller' || role === 'provider' ? { nin: '12345678901' } : {})
+      niche
     });
 
     expect(registration.status).toBe(201);
+    if (role === 'seller' || role === 'provider') expect((await request(app).post('/api/profile/nin').set('Authorization', `Bearer ${registration.body.token}`).send({ nin: uniqueNin() })).status).toBe(200);
     const login = await request(app).post('/api/auth/login').send({ username, password: 'marketplacepassword123' });
     expect(login.status).toBe(200);
     expect(login.body.user.role).toBe(role);

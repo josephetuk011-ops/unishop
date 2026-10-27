@@ -177,13 +177,21 @@ function profileForm() {
       <label class="form-field">Your position<input name="position" required minlength="2" maxlength="80" value="${escapeHtml(user.position || '')}" placeholder="e.g. Founder, Store manager, Lead stylist"></label>
       <label class="form-field">Place of operation<input name="placeOfOperation" required minlength="2" maxlength="120" value="${escapeHtml(user.placeOfOperation || '')}" placeholder="e.g. Ewet Housing, Uyo"></label>
       <label class="form-field full">About you and your business<textarea name="aboutMe" required minlength="20" maxlength="1000" rows="5" placeholder="Tell customers what you do, what makes your business special and the areas you serve.">${escapeHtml(user.aboutMe || '')}</textarea><span class="form-help">This introduction is shown on your public brand profile.</span></label>
-      ${['seller', 'provider'].includes(user.role) ? `<label class="form-field">National Identification Number (NIN)<input name="nin" inputmode="numeric" pattern="[0-9]{11}" minlength="11" maxlength="11" autocomplete="off" ${user.ninLast4 ? '' : 'required'} placeholder="${user.ninLast4 ? `On file: •••••••${escapeHtml(user.ninLast4)} (type to replace)` : '11-digit NIN'}"><span class="form-help">Used to verify your identity. Stored encrypted and visible only to Unishop administrators.</span></label>` : ''}
       <label class="form-field full profile-photo-field">Profile or brand photo<input name="profileImage" type="file" accept="image/jpeg,image/png,image/webp" ${user.profileImage ? '' : 'required'}><span class="form-help">JPG, PNG or WebP · maximum 5 MB. This image appears with your public profile.</span>${image}</label>
       <div class="form-actions"><button class="primary-button" type="submit">${complete ? 'Save profile' : 'Save and continue'}</button></div>
-    </form></div></section>`;
+    </form></div></section>${ninPanel(user)}`;
+}
+function ninPanel(user) {
+  if (!['seller', 'provider'].includes(user.role)) return '';
+  const status = user.ninLast4 ? (user.ninStatus || 'pending') : 'none';
+  const labels = { none: 'Not submitted', pending: 'Pending review', verified: 'Verified', failed: 'Not verified' };
+  const colors = { none: '#8a6d1a', pending: '#8a6d1a', verified: '#1a7a3c', failed: '#b3261e' };
+  const note = status === 'verified' ? 'Your identity is confirmed. Thank you.' : (user.ninNote || 'Add your 11-digit NIN. We check it automatically against the national identity records and match it to the name on your account.');
+  const form = status === 'verified' ? '' : `<form class="form-grid" id="nin-form"><label class="form-field">National Identification Number (NIN)<input name="nin" required inputmode="numeric" pattern="[0-9]{11}" minlength="11" maxlength="11" autocomplete="off" placeholder="${user.ninLast4 ? `On file: •••••••${escapeHtml(user.ninLast4)}` : '11-digit NIN'}"><span class="form-help">Stored encrypted. Only used to verify who you are.</span></label><div class="form-actions"><button class="primary-button" type="submit">${user.ninLast4 ? 'Check again' : 'Verify my NIN'}</button></div></form>`;
+  return `<div class="panel-gap"><section class="panel" id="nin-panel"><header class="panel-heading"><h3>Identity verification (NIN)</h3><b style="color:${colors[status]}">${labels[status]}</b></header><div class="panel-body"><p class="earnings-note">${escapeHtml(note)}</p>${form}</div></section></div>`;
 }
 function businessProfileComplete(user) {
-  return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && (!['seller', 'provider'].includes(user.role) || user.ninLast4));
+  return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && (!['seller', 'provider'].includes(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
 function adminDashboard() {
   const { metrics, users = [], orders = [], bookings = [], payouts = [], breakdown = {} } = dashboardData;
@@ -467,12 +475,23 @@ document.addEventListener('submit', async (event) => {
           position: form.elements.position.value,
           placeOfOperation: form.elements.placeOfOperation.value,
           aboutMe: form.elements.aboutMe.value,
-          profileImage,
-          ...(form.elements.nin && form.elements.nin.value.trim() ? { nin: form.elements.nin.value.trim() } : {})
+          profileImage
         })
       });
       await refreshDashboard();
       notify('Your business profile is saved.');
+    } catch (error) { notify(error.message); }
+    finally { button.disabled = false; }
+  }
+  if (event.target.id === 'nin-form') {
+    event.preventDefault();
+    const form = event.target;
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    try {
+      const result = await api('/api/profile/nin', { method: 'POST', body: JSON.stringify({ nin: form.elements.nin.value.trim() }) });
+      await refreshDashboard();
+      notify(result.status === 'verified' ? 'NIN verified.' : result.note);
     } catch (error) { notify(error.message); }
     finally { button.disabled = false; }
   }

@@ -65,3 +65,7 @@ When a booking is requested or an order/booking is paid, the vendor or service p
 - `ADMIN_NTFY_TOPIC` (optional `NTFY_SERVER`, `NTFY_TOKEN`): admin phone alerts through the free ntfy app. Use a long random topic name.
 
 Paystack has no escrow product. Customer payments land in your Paystack balance and the Unishop ledger marks them held. A Paystack transfer recipient code is created when an earner verifies a bank account (Paystack needs the account number and bank, so it cannot be created at sign-in). When the customer confirms delivery or completion, each earner's net share is sent automatically to that recipient. Earners without a saved bank account, or whose transfer fails (for example Paystack balance not yet settled, or transfer OTP enabled), keep the amount in Earnings and can withdraw or retry there.
+
+## NIN verification
+
+Sellers and service providers submit their NIN from Profile (not at signup). With `DOJAH_APP_ID` and `DOJAH_SECRET_KEY` set, the NIN is looked up with Dojah and the holder name is matched to the account name (verified or not verified). Without them it stays pending and an admin can approve it with `PATCH /api/admin/users/:id/nin-status`. Use `DOJAH_BASE_URL=https://sandbox.dojah.io` to test.

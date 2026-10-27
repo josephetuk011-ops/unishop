@@ -118,7 +118,7 @@ function recordCells(record) {
     const action = ['seller', 'provider'].includes(record.role)
       ? `<button class="table-action ${record.suspendedAt ? 'restore' : ''}" data-moderate-user="${escapeHtml(record.id)}" data-suspended="${Boolean(record.suspendedAt)}">${record.suspendedAt ? 'Restore' : 'Suspend'}</button>`
       : '—';
-    return `<td>${cell(record.name, record.businessName || record.niche || '')}</td><td>${cell(record.email, record.ninLast4 ? `${record.username} · NIN ••••••• ${record.ninLast4}` : record.username)}</td><td>${status(record.role)}</td><td>${accountStatus}${record.suspensionReason ? `<small>${escapeHtml(record.suspensionReason)}</small>` : ''}</td><td>${escapeHtml(formatDate(record.createdAt))}</td><td>${action}</td>`;
+    return `<td>${cell(record.name, record.businessName || record.niche || '')}</td><td>${cell(record.email, record.ninLast4 ? `${record.username} · NIN ••••••• ${record.ninLast4} (${record.ninStatus || 'pending'})` : record.username)}</td><td>${status(record.role)}</td><td>${accountStatus}${record.suspensionReason ? `<small>${escapeHtml(record.suspensionReason)}</small>` : ''}</td><td>${escapeHtml(formatDate(record.createdAt))}</td><td>${action}</td>`;
   }
   if (currentView === 'orders') {
     const itemNames = (record.items || []).map((item) => `${item.name} ×${item.quantity}`).join(', ');
