@@ -138,7 +138,15 @@ function renderProducts() {
   const categoryOrder = ['Home', 'Fashion', 'Beauty', 'Tech', 'Food'];
   const categoryLabels = { Home: 'Home & living', Fashion: 'Fashion', Beauty: 'Beauty', Tech: 'Tech', Food: 'Food & pantry' };
   const categoryRank = (name) => categoryOrder.includes(name) ? categoryOrder.indexOf(name) : categoryOrder.length;
-  goods.sort((left, right) => categoryRank(left.category) - categoryRank(right.category));
+  const isVendorProduct = (product) => String(product.id).startsWith('seller-');
+  const addedAt = (product) => Date.parse(product.createdAt || '') || 0;
+  goods.sort((left, right) => {
+    const leftVendor = isVendorProduct(left);
+    const rightVendor = isVendorProduct(right);
+    if (leftVendor !== rightVendor) return leftVendor ? -1 : 1;
+    if (leftVendor) return addedAt(right) - addedAt(left);
+    return categoryRank(left.category) - categoryRank(right.category);
+  });
   const groupHeading = (label, count, kind) => `<h3 class="category-heading" data-group="${escapeShortText(kind)}"><span>${escapeShortText(label)}</span><small>${count} ${count === 1 ? 'listing' : 'listings'}</small></h3>`;
   const goodsMarkup = marketMode === 'services' ? [] : goods.map((product, index) => `
     <article class="product-card goods-card" style="animation-delay:${index * 35}ms">
@@ -167,7 +175,7 @@ function renderProducts() {
     });
     return output;
   };
-  const groupedGoods = withHeadings(marketMode === 'services' ? [] : goods, goodsMarkup, (key) => categoryLabels[key] || key, (product) => product.category, 'goods');
+  const groupedGoods = withHeadings(marketMode === 'services' ? [] : goods, goodsMarkup, (key) => key === '__new' ? 'New from vendors' : (categoryLabels[key] || key), (product) => isVendorProduct(product) ? '__new' : product.category, 'goods');
   const serviceItems = marketMode === 'goods' ? [] : [...services].sort((left, right) => String(left.niche || left.category || left.trade || '').localeCompare(String(right.niche || right.category || right.trade || '')));
   const serviceMarkupByItem = new Map(services.map((provider, index) => [provider, serviceMarkup[index]]));
   const groupedServices = withHeadings(serviceItems, serviceItems.map((provider) => serviceMarkupByItem.get(provider)), (key) => key, (provider) => provider.niche || provider.category || provider.trade, 'services');
