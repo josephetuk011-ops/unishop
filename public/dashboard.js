@@ -64,7 +64,43 @@ function payoutPanel() {
   const account = dashboardData.payoutAccount;
   const bank = account ? `<p class="payout-account-summary">${escapeHtml(account.accountName)} · ${escapeHtml(account.bankName)} · •••• ${escapeHtml(account.accountLast4)}</p>` : '<p class="payout-account-summary">No bank account saved.</p>';
   const rows = (dashboardData.payouts || []).map((payout) => `<tr><td><strong>${escapeHtml(payout.reference)}</strong><br>${formatDate(payout.createdAt)}</td><td>${formatMoney(payout.amountNaira)}</td><td><span class="status-pill ${escapeHtml(payout.status)}">${escapeHtml(payout.status)}</span>${payout.status === 'needs-review' ? `<br><button class="quiet-button" data-retry-payout="${escapeHtml(payout.reference)}">Retry transfer</button>` : ''}</td></tr>`);
-  return `${panel('Withdrawable balance', `<div class="payout-balance">${formatMoney(dashboardData.availableBalanceNaira || 0)}</div><p class="earnings-note">Commission: 5% below ₦10,000, 10% from ₦10,000 to ₦29,999, and 15% from ₦30,000. Rates apply to your subtotal before dispatch fees. Sellers contribute ₦500 per seller; service providers contribute ₦500. Product riders receive the buyer’s ₦500 plus seller contributions.</p>${bank}<form class="form-grid payout-form" id="payout-account-form"><label class="form-field">Bank<select name="bankCode" id="payout-bank" required><option value="">Loading banks…</option></select></label><label class="form-field">Account number<input name="accountNumber" inputmode="numeric" autocomplete="off" pattern="[0-9]{10}" minlength="10" maxlength="10" required></label><div class="form-actions"><button class="secondary-button" type="submit">${account ? 'Update bank account' : 'Verify bank account'}</button></div></form><form class="form-grid payout-form" id="payout-withdraw-form"><label class="form-field">Withdrawal amount (NGN)<input name="amountNaira" type="number" min="100" max="${Number(dashboardData.availableBalanceNaira || 0)}" step="1" required></label><div class="form-actions"><button class="primary-button" type="submit" ${!account || !(dashboardData.availableBalanceNaira > 0) ? 'disabled' : ''}>Withdraw</button></div></form>`, '')}${panel('Withdrawal history', table(['Reference', 'Amount', 'Status'], rows, 'No withdrawals yet.'))}`;
+  return `<div id="notification-panel">${panel('Notifications', '<div class="empty-state">Loading…</div>')}</div>${panel('Withdrawable balance', `<div class="payout-balance">${formatMoney(dashboardData.availableBalanceNaira || 0)}</div><p class="earnings-note">Commission: 5% below ₦10,000, 10% from ₦10,000 to ₦29,999, and 15% from ₦30,000. Rates apply to your subtotal before dispatch fees. Sellers contribute ₦500 per seller; service providers contribute ₦500. Product riders receive the buyer’s ₦500 plus seller contributions.</p>${bank}<form class="form-grid payout-form" id="payout-account-form"><label class="form-field">Bank<select name="bankCode" id="payout-bank" required><option value="">Loading banks…</option></select></label><label class="form-field">Account number<input name="accountNumber" inputmode="numeric" autocomplete="off" pattern="[0-9]{10}" minlength="10" maxlength="10" required></label><div class="form-actions"><button class="secondary-button" type="submit">${account ? 'Update bank account' : 'Verify bank account'}</button></div></form><form class="form-grid payout-form" id="payout-withdraw-form"><label class="form-field">Withdrawal amount (NGN)<input name="amountNaira" type="number" min="100" max="${Number(dashboardData.availableBalanceNaira || 0)}" step="1" required></label><div class="form-actions"><button class="primary-button" type="submit" ${!account || !(dashboardData.availableBalanceNaira > 0) ? 'disabled' : ''}>Withdraw</button></div></form>`, '')}${panel('Withdrawal history', table(['Reference', 'Amount', 'Status'], rows, 'No withdrawals yet.'))}`;
+}
+function urlBase64ToUint8Array(value) {
+  const padded = value + '='.repeat((4 - value.length % 4) % 4);
+  const raw = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+async function loadNotifications() {
+  const host = document.querySelector('#notification-panel');
+  if (!host) return;
+  try {
+    const result = await api('/api/notifications');
+    const supported = 'serviceWorker' in navigator && 'PushManager' in window;
+    const button = result.pushEnabled && supported
+      ? `<button class="secondary-button" id="enable-push" ${result.subscribed && Notification.permission === 'granted' ? 'disabled' : ''}>${result.subscribed && Notification.permission === 'granted' ? 'Phone notifications on' : 'Turn on phone notifications'}</button>`
+      : '<p class="earnings-note">Phone notifications are not available on this browser or have not been configured yet. Email alerts still work.</p>';
+    const rows = result.notifications.map((item) => `<div class="compact-row"><span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.body)} · ${formatDate(item.createdAt)}</small></span></div>`).join('') || '<div class="empty-state">New orders, bookings and payments will appear here.</div>';
+    host.innerHTML = panel('Notifications', `<div class="compact-list">${rows}</div><div class="form-actions">${button}</div>`);
+    if (result.unread) api('/api/notifications/read', { method: 'POST' }).catch(() => {});
+  } catch {
+    host.innerHTML = '';
+  }
+}
+async function enablePushNotifications() {
+  try {
+    const { publicKey } = await api('/api/notifications/push-key');
+    if (!publicKey) throw new Error('Phone notifications are not configured yet.');
+    if (await Notification.requestPermission() !== 'granted') throw new Error('Notifications were blocked in your browser settings.');
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) });
+    await api('/api/notifications/subscribe', { method: 'POST', body: JSON.stringify({ subscription: subscription.toJSON() }) });
+    notify('Phone notifications are on.');
+    loadNotifications();
+  } catch (error) {
+    notify(error.message);
+  }
 }
 async function populatePayoutBanks() {
   const select = document.querySelector('#payout-bank');
@@ -276,6 +312,7 @@ function renderDashboard() {
       ? providerDashboard()
       : seller ? sellerDashboard() : dashboardData.role === 'dispatch' ? dispatchDashboard() : customerDashboard();
   populatePayoutBanks();
+  loadNotifications();
   document.querySelectorAll('[data-view]').forEach((link) => link.classList.toggle('active', link.dataset.view === selectedView));
 }
 async function refreshDashboard() {
@@ -373,6 +410,7 @@ document.addEventListener('click', async (event) => {
     try { await api(`/api/bookings/${encodeURIComponent(confirmBooking.dataset.confirmBooking)}/confirm-completion`, { method: 'POST' }); await refreshDashboard(); notify('Service confirmed. Provider earnings are now available to withdraw.'); }
     catch (error) { notify(error.message); }
   }
+  if (event.target.closest('#enable-push')) enablePushNotifications();
   const retryPayout = event.target.closest('[data-retry-payout]');
   if (retryPayout) {
     try {
