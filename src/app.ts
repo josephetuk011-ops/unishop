@@ -168,6 +168,7 @@ const imageUpload = multer({
     callback(null, true);
   }
 });
+const maxVideoBytes = 2 * 1024 * 1024 - 1; // videos must be under 2 MB
 const productVideoUpload = multer({
   storage: multer.diskStorage({
     destination: (_request, _file, callback) => {
@@ -175,13 +176,15 @@ const productVideoUpload = multer({
       callback(null, uploadDirectory);
     },
     filename: (_request, file, callback) => {
-      const extension = file.mimetype === 'video/webm' ? '.webm' : '.mp4';
+      const fromName = path.extname(file.originalname || '').toLowerCase().replace(/[^.a-z0-9]/g, '');
+      const fromType = (file.mimetype.split('/')[1] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const extension = /^\.[a-z0-9]{2,5}$/.test(fromName) ? fromName : /^[a-z0-9]{2,5}$/.test(fromType) ? `.${fromType}` : '.mp4';
       callback(null, `${Date.now()}-${randomBytes(10).toString('hex')}${extension}`);
     }
   }),
-  limits: { fileSize: 40 * 1024 * 1024, files: 1 },
+  limits: { fileSize: maxVideoBytes, files: 1 },
   fileFilter: (_request, file, callback) => {
-    if (!['video/mp4', 'video/webm'].includes(file.mimetype)) return callback(new Error('Upload an MP4 or WebM product video.'));
+    if (!String(file.mimetype).startsWith('video/')) return callback(new Error('Choose a video file.'));
     callback(null, true);
   }
 });
@@ -992,8 +995,8 @@ app.post(['/api/uploads/short-video', '/api/uploads/product-video'], (request: R
   const user = authenticatedUser(request);
   if (!user || !['seller', 'provider'].includes(user.role)) return response.status(403).json({ error: 'Sign in as a vendor or service provider to upload short videos.' });
   productVideoUpload.single('video')(request, response, (error: any) => {
-    if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Short video must be 40 MB or smaller.' : error.message || 'The video could not be uploaded.' });
-    if (!request.file) return response.status(400).json({ error: 'Choose an MP4 or WebM short video.' });
+    if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Video must be under 2 MB.' : error.message || 'The video could not be uploaded.' });
+    if (!request.file) return response.status(400).json({ error: 'Choose a short video.' });
     const videoDuration = Number(request.body?.duration);
     if (!Number.isFinite(videoDuration) || videoDuration <= 0 || videoDuration > 30) {
       fs.unlink(request.file.path, () => {});
@@ -1109,7 +1112,7 @@ app.post('/api/provider/listings', (request: Request, response: Response) => {
   if (typeof description !== 'string' || description.trim().length < 10 || description.length > 1500) fail(400, 'Describe your service in at least 10 characters.');
   if (!Number.isInteger(Number(price)) || Number(price) < 500 || Number(price) > 100000000) fail(400, 'Enter a valid price in Naira.');
   if (!Array.isArray(portfolio) || portfolio.length < 1 || portfolio.length > 6 || portfolio.some((image) => typeof image !== 'string' || !/^\/uploads\/[\w.-]+$/.test(image))) fail(400, 'Upload 1 to 6 work photos first.');
-  if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.(mp4|webm)$/.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
+  if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.[a-z0-9]{2,5}$/i.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
   const listing = { id: randomBytes(12).toString('hex'), userId: user.id, provider: user.name, businessName: user.businessName, niche, title: title.trim(), description: description.trim(), price: Number(price), neighbourhood: 'Uyo, Akwa Ibom', portfolio, video, videoDuration: video === undefined ? undefined : Number(videoDuration), createdAt: new Date().toISOString() };
   state.serviceListings.push(listing);
@@ -1154,7 +1157,7 @@ app.post('/api/seller/products', (request: Request, response: Response) => {
   const uploadPath = /^\/uploads\/[\w.-]+$/;
   const productImages: string[] = images !== undefined ? images : image !== undefined ? [image] : [];
   if (!Array.isArray(productImages) || productImages.length < 1 || productImages.length > 3 || productImages.some((item) => typeof item !== 'string' || !uploadPath.test(item))) fail(400, 'Upload 1 to 3 product photos first.');
-  if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.(mp4|webm)$/.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
+  if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.[a-z0-9]{2,5}$/i.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
   const product = { id: `seller-${randomBytes(10).toString('hex')}`, userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), ...stockFields, image: productImages[0], images: productImages, video, videoDuration: video === undefined ? undefined : Number(videoDuration), rating: null, reviews: 0, createdAt: new Date().toISOString() };
   state.sellerProducts.push(product);

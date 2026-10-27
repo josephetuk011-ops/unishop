@@ -113,6 +113,14 @@ const server = app.listen(0, async () => {
     };
     const longProviderVideo = await uploadMedia('/api/uploads/short-video', 'video', 'long.mp4', 'video/mp4', Buffer.from('mock-mp4-content'), provider.data.token, { duration: 31 });
     assert.equal(longProviderVideo.status, 400);
+    const movVideo = await uploadMedia('/api/uploads/short-video', 'video', 'clip.mov', 'video/quicktime', Buffer.from('mock-mov-content'), provider.data.token, { duration: 5 });
+    assert.equal(movVideo.status, 201);
+    assert.match(movVideo.data.video, /\.mov$/);
+    const bigVideo = await uploadMedia('/api/uploads/short-video', 'video', 'big.mp4', 'video/mp4', Buffer.alloc(2 * 1024 * 1024), provider.data.token, { duration: 5 });
+    assert.equal(bigVideo.status, 400);
+    assert.match(bigVideo.data.error, /under 2 MB/);
+    const notVideo = await uploadMedia('/api/uploads/short-video', 'video', 'x.txt', 'text/plain', Buffer.from('hi'), provider.data.token, { duration: 5 });
+    assert.equal(notVideo.status, 400);
     const providerVideo = await uploadMedia('/api/uploads/short-video', 'video', 'service.mp4', 'video/mp4', Buffer.from('mock-mp4-content'), provider.data.token, { duration: 30 });
     assert.equal(providerVideo.status, 201);
     const shortService = await send('POST', '/api/provider/listings', {
