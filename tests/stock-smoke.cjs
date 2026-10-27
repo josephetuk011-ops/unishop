@@ -41,6 +41,14 @@ const server = app.listen(0, async () => {
     assert.equal((await send('POST', '/api/seller/products', { category: 'Made-up category', description: 'A nice shirt for you.', price: 5000, image: '/uploads/shirt.jpg', name: 'Bad category', quantity: 1 }, st)).status, 400);
     const sneakers = await send('POST', '/api/seller/products', { category: 'Shoes and sandals', description: 'Comfortable sneakers.', price: 9000, image: '/uploads/shirt.jpg', name: 'Sneakers', quantity: 4 }, st);
     assert.equal(sneakers.data.product.category, 'Shoes and sandals');
+    const sellerId = sneakers.data.product.userId;
+    const shop = await send('GET', `/api/vendors/${sellerId}`);
+    assert.equal(shop.status, 200);
+    assert.ok(shop.data.products.some((item) => item.name === 'Sneakers'), 'shop lists its products');
+    assert.equal(shop.data.rating.count, 0);
+    assert.equal(shop.data.vendor.passwordHash, undefined);
+    assert.equal(shop.data.vendor.email, undefined);
+    assert.equal((await send('GET', '/api/vendors/does-not-exist')).status, 404);
     const base_ = { category: 'Fashion', description: 'A nice shirt for you.', price: 5000, image: '/uploads/shirt.jpg' };
     assert.equal((await send('POST', '/api/seller/products', { ...base_, name: 'Bad sizes', sizes: [{ label: 'S', quantity: -1 }] }, st)).status, 400);
     const shirt = (await send('POST', '/api/seller/products', { ...base_, name: 'Sized shirt', sizes: [{ label: 'S', quantity: 2 }, { label: 'M', quantity: 1 }] }, st)).data.product;

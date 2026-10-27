@@ -162,7 +162,7 @@ function renderProducts() {
   const goodsMarkup = marketMode === 'services' ? [] : goods.map((product, index) => `
     <article class="product-card goods-card" style="animation-delay:${index * 35}ms">
       <div class="product-image-wrap"><img class="product-image" src="${imageUrl(product.image)}" alt="${product.name}" loading="lazy"><button class="product-open-image" data-product-detail="${product.id}" aria-label="View ${product.name} details"></button><span class="product-badge ${product.category === 'Beauty' ? 'coral' : ''}">${product.badge || 'UYO SHOP'}</span>${product.video ? '<span class="product-video-badge">▶ VIDEO</span>' : ''}<button class="save-button ${saved.has(product.id) ? 'saved' : ''}" data-save="${product.id}" aria-label="${saved.has(product.id) ? 'Remove from' : 'Save to'} favourites">${saved.has(product.id) ? '♥' : '♡'}</button></div>
-      <div class="product-details"><div class="product-vendor">${product.seller}</div><h3 class="product-name"><button class="product-title-open" data-product-detail="${product.id}">${product.name}</button></h3><div class="product-bottom"><span class="product-price">${formatPrice(product.price)}</span>${product.rating ? `<span class="product-rating"><b>★</b> ${Number(product.rating).toFixed(1)}/5 <span>(${product.reviews || 0})</span></span>` : '<span class="product-rating">★ Not rated yet</span>'}${stockBadge(product)}<button class="add-button" data-add="${product.id}" aria-label="Add ${product.name} to bag"${product.stock === 0 ? ' disabled' : ''}>+</button></div></div>
+      <div class="product-details"><div class="product-vendor">${product.userId ? `<a class="vendor-link" href="/vendor.html?id=${encodeURIComponent(product.userId)}">${product.seller}</a>` : product.seller}</div><h3 class="product-name"><button class="product-title-open" data-product-detail="${product.id}">${product.name}</button></h3><div class="product-bottom"><span class="product-price">${formatPrice(product.price)}</span>${product.rating ? `<span class="product-rating"><b>★</b> ${Number(product.rating).toFixed(1)}/5 <span>(${product.reviews || 0})</span></span>` : '<span class="product-rating">★ Not rated yet</span>'}${stockBadge(product)}<button class="add-button" data-add="${product.id}" aria-label="Add ${product.name} to bag"${product.stock === 0 ? ' disabled' : ''}>+</button></div></div>
     </article>`);
   const services = providers.filter((provider) => {
     const matchesNiche = activeNiche === 'All' || provider.niche === activeNiche || provider.category === activeNiche || provider.trade === activeNiche;
@@ -213,7 +213,15 @@ function openProductDetail(productId) {
   document.querySelector('#detail-category').textContent = `${product.category} · UYO MARKETPLACE`;
   document.querySelector('#product-detail-title').textContent = product.name;
   document.querySelector('#detail-rating').innerHTML = product.rating ? `<strong>★ ${Number(product.rating).toFixed(1)}/5</strong> <span>${product.reviews || 0} customer ratings</span>` : '<span>New listing · No ratings yet</span>';
-  document.querySelector('#detail-seller').textContent = `From ${product.seller}`;
+  const sellerLine = document.querySelector('#detail-seller');
+  sellerLine.textContent = `From ${product.seller}`;
+  if (product.userId) {
+    const visit = document.createElement('a');
+    visit.className = 'vendor-link';
+    visit.href = `/vendor.html?id=${encodeURIComponent(product.userId)}`;
+    visit.textContent = ' · Visit shop and see all products and ratings';
+    sellerLine.append(visit);
+  }
   const brandProfile = product.brandProfile;
   const brandTrigger = document.querySelector('#detail-brand-trigger');
   const brandCard = document.querySelector('#detail-brand-card');
@@ -839,8 +847,15 @@ function loadProducts() {
       renderShorts();
       renderCart();
       renderVisionTicker();
+      openProductFromLink();
     }
   }).catch(() => {});
+}
+function openProductFromLink() {
+  const match = location.hash.match(/^#product=(.+)$/);
+  if (!match) return;
+  const productId = decodeURIComponent(match[1]);
+  if (products.some((item) => item.id === productId)) { history.replaceState(null, '', location.pathname + location.search); openProductDetail(productId); }
 }
 const catalogIds = products.map((product) => product.id);
 loadProducts();

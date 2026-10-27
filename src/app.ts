@@ -328,7 +328,7 @@ function cleanUser(user: User) {
 function publicBusinessProfile(userId: string | undefined) {
   const user = state.users.find((member) => member.id === userId && !member.suspendedAt);
   if (!user || !['seller', 'provider'].includes(user.role)) return undefined;
-  return { name: user.name, businessName: user.businessName || '', position: user.position || '', placeOfOperation: user.placeOfOperation || '', aboutMe: user.aboutMe || '', profileImage: user.profileImage || '', role: user.role };
+  return { userId: user.id, name: user.name, businessName: user.businessName || '', position: user.position || '', placeOfOperation: user.placeOfOperation || '', aboutMe: user.aboutMe || '', profileImage: user.profileImage || '', role: user.role };
 }
 
 function hasCompleteBusinessProfile(user: User) {
@@ -969,6 +969,29 @@ app.get('/api/products', (_request, response) => response.json([
     return { ...product, seller: brandProfile?.businessName || product.seller, brandProfile, rating, reviews: ratings.length };
   })
 ]));
+app.get('/api/vendors/:id', (request: Request, response: Response) => {
+  const profile = publicBusinessProfile(request.params.id);
+  if (!profile) return response.status(404).json({ error: 'This shop was not found.' });
+  const ratingOf = (id: string) => state.reviews.filter((review) => review.listingId === id);
+  const products = state.sellerProducts.filter((product) => product.userId === profile.userId).sort((a, b) => Date.parse(b.createdAt || '') - Date.parse(a.createdAt || '')).map((product) => {
+    const reviews = ratingOf(product.id);
+    return { ...product, seller: profile.businessName || product.seller, rating: reviews.length ? (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(1) : null, reviews: reviews.length };
+  });
+  const services = state.serviceListings.filter((listing) => listing.userId === profile.userId).map((listing) => ({ id: listing.id, title: listing.title, niche: listing.niche, price: listing.price, image: listing.image || listing.images?.[0] || '' }));
+  const ids = new Set([...products.map((product) => product.id), ...services.map((listing) => listing.id)]);
+  const allReviews = state.reviews.filter((review) => ids.has(review.listingId)).sort((a, b) => Date.parse(b.createdAt || '') - Date.parse(a.createdAt || ''));
+  const distribution = [5, 4, 3, 2, 1].map((stars) => ({ stars, count: allReviews.filter((review) => review.rating === stars).length }));
+  const paidOrders = state.orders.filter((order) => order.paymentStatus === 'paid' && order.items?.some((item: any) => item.sellerUserId === profile.userId)).length;
+  response.json({
+    vendor: profile,
+    joinedAt: state.users.find((member) => member.id === profile.userId)?.createdAt,
+    rating: { average: allReviews.length ? Number((allReviews.reduce((sum, review) => sum + review.rating, 0) / allReviews.length).toFixed(1)) : null, count: allReviews.length, distribution },
+    ordersCompleted: paidOrders,
+    products,
+    services,
+    reviews: allReviews.slice(0, 10).map((review) => ({ reviewer: String(review.reviewer || 'Customer').split(' ')[0], rating: review.rating, comment: review.comment || '', createdAt: review.createdAt }))
+  });
+});
 app.get('/api/services/niches', (_request, response) => response.json(serviceNiches.map((name) => ({ name, image: nicheImages[name] }))));
 app.get('/api/services', (_request, response) => {
   const reviewsByListing: Record<string, any[]> = {};
