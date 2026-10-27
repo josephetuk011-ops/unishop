@@ -177,12 +177,13 @@ function profileForm() {
       <label class="form-field">Your position<input name="position" required minlength="2" maxlength="80" value="${escapeHtml(user.position || '')}" placeholder="e.g. Founder, Store manager, Lead stylist"></label>
       <label class="form-field">Place of operation<input name="placeOfOperation" required minlength="2" maxlength="120" value="${escapeHtml(user.placeOfOperation || '')}" placeholder="e.g. Ewet Housing, Uyo"></label>
       <label class="form-field full">About you and your business<textarea name="aboutMe" required minlength="20" maxlength="1000" rows="5" placeholder="Tell customers what you do, what makes your business special and the areas you serve.">${escapeHtml(user.aboutMe || '')}</textarea><span class="form-help">This introduction is shown on your public brand profile.</span></label>
+      ${['seller', 'provider'].includes(user.role) ? `<label class="form-field">National Identification Number (NIN)<input name="nin" inputmode="numeric" pattern="[0-9]{11}" minlength="11" maxlength="11" autocomplete="off" ${user.ninLast4 ? '' : 'required'} placeholder="${user.ninLast4 ? `On file: •••••••${escapeHtml(user.ninLast4)} (type to replace)` : '11-digit NIN'}"><span class="form-help">Used to verify your identity. Stored encrypted and visible only to Unishop administrators.</span></label>` : ''}
       <label class="form-field full profile-photo-field">Profile or brand photo<input name="profileImage" type="file" accept="image/jpeg,image/png,image/webp" ${user.profileImage ? '' : 'required'}><span class="form-help">JPG, PNG or WebP · maximum 5 MB. This image appears with your public profile.</span>${image}</label>
       <div class="form-actions"><button class="primary-button" type="submit">${complete ? 'Save profile' : 'Save and continue'}</button></div>
     </form></div></section>`;
 }
 function businessProfileComplete(user) {
-  return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage);
+  return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && (!['seller', 'provider'].includes(user.role) || user.ninLast4));
 }
 function adminDashboard() {
   const { metrics, users = [], orders = [], bookings = [], payouts = [], breakdown = {} } = dashboardData;
@@ -466,7 +467,8 @@ document.addEventListener('submit', async (event) => {
           position: form.elements.position.value,
           placeOfOperation: form.elements.placeOfOperation.value,
           aboutMe: form.elements.aboutMe.value,
-          profileImage
+          profileImage,
+          ...(form.elements.nin && form.elements.nin.value.trim() ? { nin: form.elements.nin.value.trim() } : {})
         })
       });
       await refreshDashboard();

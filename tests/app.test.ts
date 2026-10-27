@@ -69,6 +69,7 @@ describe('E-Marketplace Application', () => {
         password: 'providerpassword123',
         role: 'provider',
         businessName: 'Test Barbershop',
+        nin: '12345678901',
         niche: 'Barbing'
       });
       expect(registration.status).toBe(201);
@@ -155,6 +156,17 @@ describe('E-Marketplace Application', () => {
     expect(login.body.user.role).toBe('customer');
   });
 
+  it('requires an 11-digit NIN from sellers and providers and never returns it', async () => {
+    const username = `nin${Date.now()}`;
+    const body = { name: 'Nin Seller', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Nin Shop' };
+    expect((await request(app).post('/api/auth/register').send(body)).status).toBe(400);
+    expect((await request(app).post('/api/auth/register').send({ ...body, nin: '123' })).status).toBe(400);
+    const ok = await request(app).post('/api/auth/register').send({ ...body, nin: '12345678901' });
+    expect(ok.status).toBe(201);
+    expect(ok.body.user.ninLast4).toBe('8901');
+    expect(JSON.stringify(ok.body)).not.toContain('12345678901');
+  });
+
   it.each([
     { role: 'seller', businessName: 'Test Shop' },
     { role: 'provider', businessName: 'Test Service', niche: 'Barbing' },
@@ -168,7 +180,8 @@ describe('E-Marketplace Application', () => {
       password: 'marketplacepassword123',
       role,
       businessName,
-      niche
+      niche,
+      ...(role === 'seller' || role === 'provider' ? { nin: '12345678901' } : {})
     });
 
     expect(registration.status).toBe(201);

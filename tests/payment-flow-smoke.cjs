@@ -65,7 +65,7 @@ const server = app.listen(0, async () => {
     assert.equal(invalidProvider.status, 400);
 
     const provider = await send('POST', '/api/auth/register', {
-      name: 'Test Provider', username: 'uyoprovider', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'provider', businessName: 'Test Barbing Studio', niche: 'Barbing'
+      name: 'Test Provider', username: 'uyoprovider', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'provider', nin: '12345678901', businessName: 'Test Barbing Studio', niche: 'Barbing'
     });
     assert.equal(provider.status, 201);
     const providerLogin = await send('POST', '/api/auth/login', { username: 'uyoprovider', password: 'A-secure-test-password' });
@@ -92,7 +92,7 @@ const server = app.listen(0, async () => {
     assert.equal(booking.status, 201);
 
     const seller = await send('POST', '/api/auth/register', {
-      name: 'Test Seller', username: 'uyoseller', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'seller', businessName: 'Test Uyo Store'
+      name: 'Test Seller', username: 'uyoseller', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'seller', nin: '12345678901', businessName: 'Test Uyo Store'
     });
     assert.equal(seller.status, 201);
     assert.equal((await send('POST', '/api/auth/login', { username: 'uyoseller', password: 'A-secure-test-password' })).data.user.role, 'seller');
