@@ -112,6 +112,15 @@ function status(value) {
   return `<span class="status ${escapeHtml(label.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}">${escapeHtml(label.replace(/-/g, ' '))}</span>`;
 }
 
+const trackingNext = { 'awaiting-pickup': ['collected', 'Mark collected from seller'], collected: ['on-dispatch', 'Mark on dispatch'], 'on-dispatch': ['delivered', 'Mark delivered'] };
+function trackingCell(record) {
+  if (record.type === 'service' || record.paymentStatus !== 'paid' || !record.tracking) return status(record.deliveryStatus || record.orderStatus);
+  const current = record.tracking.status;
+  const next = trackingNext[current];
+  const label = (record.tracking.steps.find((step) => step.key === current) || {}).label || current;
+  return `${status(label)}${record.orderStatus === 'completed' ? '' : next ? `<br><button class="table-action" data-track-order="${escapeHtml(record.reference)}" data-track-status="${next[0]}">${next[1]}</button>` : ''}`;
+}
+
 function recordCells(record) {
   if (currentView === 'users') {
     const accountStatus = record.suspendedAt ? status('suspended') : status('active');
@@ -122,7 +131,7 @@ function recordCells(record) {
   }
   if (currentView === 'orders') {
     const itemNames = (record.items || []).map((item) => `${item.name} ×${item.quantity}`).join(', ');
-    return `<td>${cell(record.reference, formatDate(record.createdAt))}</td><td>${cell(record.customerName, record.customerEmail)}<small>${escapeHtml(record.customerPhone)} · ${escapeHtml(record.deliveryAddress)}</small></td><td class="row-detail">${escapeHtml(itemNames || '—')}</td><td>${escapeHtml(formatMoney(record.totalNaira))}</td><td>${status(record.paymentStatus)}</td><td>${status(record.deliveryStatus || record.orderStatus)}</td>`;
+    return `<td>${cell(record.reference, formatDate(record.createdAt))}</td><td>${cell(record.customerName, record.customerEmail)}<small>${escapeHtml(record.customerPhone)} · ${escapeHtml(record.deliveryAddress)}</small></td><td class="row-detail">${escapeHtml(itemNames || '—')}</td><td>${escapeHtml(formatMoney(record.totalNaira))}</td><td>${status(record.paymentStatus)}</td><td>${trackingCell(record)}</td>`;
   }
   if (currentView === 'bookings') {
     return `<td>${cell(record.service, record.providerName)}</td><td>${cell(record.customerName, record.customerEmail)}</td><td>${cell(record.time, record.neighbourhood)}</td><td>${escapeHtml(record.amountNaira ? formatMoney(record.amountNaira) : 'Quote pending')}</td><td>${status(record.status)}</td><td>${status(record.paymentStatus)}</td>`;
@@ -139,7 +148,7 @@ function recordCells(record) {
 
 function headersForView() {
   if (currentView === 'users') return ['Account', 'Email and username', 'Role', 'Access', 'Joined', 'Action'];
-  if (currentView === 'orders') return ['Order', 'Customer and delivery', 'Items', 'Total', 'Payment', 'Delivery'];
+  if (currentView === 'orders') return ['Order', 'Customer and delivery', 'Items', 'Total', 'Payment', 'Delivery tracking'];
   if (currentView === 'bookings') return ['Service', 'Customer', 'Requested time', 'Price', 'Booking', 'Payment'];
   if (currentView === 'listings') return ['Type', 'Listing', 'Account owner', 'Price', 'Visibility', 'Created'];
   if (currentView === 'payouts') return ['Transfer', 'Account owner', 'Role', 'Amount', 'Status'];
@@ -249,6 +258,13 @@ function bindEvents() {
     if (pageButton && !pageButton.disabled) {
       currentOffset = Math.max(0, currentOffset + (pageButton.dataset.page === 'next' ? pageSize : -pageSize));
       try { await loadRecords(); } catch (error) { notify(error.message); }
+      return;
+    }
+    const track = event.target.closest('[data-track-order]');
+    if (track) {
+      track.disabled = true;
+      try { await api(`/api/admin/orders/${encodeURIComponent(track.dataset.trackOrder)}/tracking`, { method: 'PATCH', body: JSON.stringify({ status: track.dataset.trackStatus }) }); await loadRecords(); notify('Tracking updated. The customer was notified.'); }
+      catch (error) { notify(error.message); track.disabled = false; }
       return;
     }
     const moderate = event.target.closest('[data-moderate-user]');

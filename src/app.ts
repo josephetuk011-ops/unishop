@@ -22,6 +22,9 @@ app.set('trust proxy', 1);
 const scrypt = promisify(scryptCallback);
 const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
+// Dispatch rider sign-in is paused: the admin updates delivery tracking instead. Set DISPATCH_SIGNIN_ENABLED=true to bring riders back.
+const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED === 'true';
+const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
 type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[] };
@@ -361,9 +364,16 @@ function matchesAdminPassword(supplied: string, expected: string) {
   return timingSafeEqual(suppliedDigest, expectedDigest);
 }
 
+function trackingOf(order: any) {
+  const events: { status: string; at: string }[] = Array.isArray(order.trackingEvents) ? order.trackingEvents : [];
+  const status = order.trackingStatus || (order.deliveryStatus === 'delivered' ? 'delivered' : order.deliveryStatus === 'picked-up' ? 'on-dispatch' : 'awaiting-pickup');
+  const reached = trackingSteps.findIndex((step) => step.key === status);
+  return { status, steps: trackingSteps.map((step, index) => ({ key: step.key, label: step.label, done: index <= reached, at: step.key === 'awaiting-pickup' ? (events.find((event) => event.status === step.key)?.at || order.paidAt) : events.find((event) => event.status === step.key)?.at })) };
+}
+
 function safeOrder(order: any) {
   const { email, phone, address, customerName, userId, authorizationUrl, accessCode, settlementLines, sellerDispatchContributionNaira, riderSettlementNaira, ...publicOrder } = order;
-  return { ...publicOrder, items: publicOrder.items.map(({ sellerUserId, ...item }: any) => item) };
+  return { ...publicOrder, tracking: order.type === 'service' ? undefined : trackingOf(order), items: publicOrder.items.map(({ sellerUserId, ...item }: any) => item) };
 }
 
 async function paystackRequest(endpoint: string, body?: Record<string, unknown>) {
@@ -387,6 +397,7 @@ async function completePayment(reference: string, payment: any) {
     order.orderStatus = 'confirmed';
     order.settlementStatus = 'held';
     order.paidAt = new Date().toISOString();
+    if (order.type !== 'service') { order.trackingStatus = 'awaiting-pickup'; order.trackingEvents = [{ status: 'awaiting-pickup', at: order.paidAt }]; }
     if (order.bookingId) {
       const booking = state.bookings.find((item) => item.id === order.bookingId);
       if (booking) {
@@ -781,6 +792,27 @@ app.get('/api/admin/users/:id/nin', (request: Request, response: Response) => {
   auditAction('nin.viewed', 'railway-admin', { userId: user.id });
   response.json({ nin: decryptNin(user.ninEncrypted), submittedAt: user.ninSubmittedAt });
 });
+app.patch('/api/admin/orders/:reference/tracking', (request: Request, response: Response) => {
+  const admin = requireAdmin(request);
+  const order = state.orders.find((item) => item.reference === request.params.reference && item.type !== 'service');
+  if (!order || order.paymentStatus !== 'paid') fail(404, 'Paid product order not found.');
+  const next = request.body?.status;
+  const nextIndex = trackingSteps.findIndex((step) => step.key === next);
+  const currentIndex = trackingSteps.findIndex((step) => step.key === trackingOf(order).status);
+  if (nextIndex < 1) fail(400, 'Choose collected, on-dispatch or delivered.');
+  if (nextIndex <= currentIndex) fail(409, 'Tracking can only move forward.');
+  const at = new Date().toISOString();
+  order.trackingEvents = [...(Array.isArray(order.trackingEvents) ? order.trackingEvents : []), { status: next, at }];
+  order.trackingStatus = next;
+  order.deliveryStatus = next === 'delivered' ? 'delivered' : next === 'on-dispatch' ? 'picked-up' : 'collected';
+  if (next === 'delivered') order.deliveredAt = at;
+  auditAction('order.tracking', admin.id, { reference: order.reference, status: next });
+  saveState();
+  const label = trackingSteps[nextIndex].label;
+  if (order.userId) notifyUser(order.userId, { title: next === 'delivered' ? 'Your order has arrived' : 'Order update', body: next === 'delivered' ? `${label}. Open your orders and tap Received once you have it.` : `Your order is now: ${label}.`, url: '/dashboard.html' });
+  response.json({ order: safeOrder(order) });
+});
+
 app.patch('/api/admin/users/:id/suspension', (request: Request, response: Response) => {
   const admin = requireAdmin(request);
   const user = state.users.find((member) => member.id === request.params.id);
@@ -1143,9 +1175,20 @@ app.post('/api/orders/:reference/confirm-delivery', (request: Request, response:
   if (user.role !== 'customer') fail(403, 'Only the customer can confirm delivery.');
   const order = state.orders.find((item) => item.reference === request.params.reference && item.userId === user.id && item.type === 'product');
   if (!order || order.paymentStatus !== 'paid') fail(404, 'Paid order not found.');
-  if (order.deliveryStatus !== 'delivered') fail(409, 'The rider must mark the order delivered before you can confirm it.');
+  if (order.deliveryStatus !== 'delivered') fail(409, 'Your order has not reached you yet. You can confirm it once tracking shows it at your doorstep.');
+  const rating = Number(request.body?.rating);
+  if (request.body?.rating !== undefined && (!Number.isInteger(rating) || rating < 1 || rating > 5)) fail(400, 'Choose a rating from 1 to 5.');
   if (!releaseSettlement(order)) fail(409, 'This order has already been confirmed.');
   order.orderStatus = 'completed';
+  order.receivedAt = new Date().toISOString();
+  if (Number.isInteger(rating)) {
+    const comment = typeof request.body?.comment === 'string' ? request.body.comment.trim().slice(0, 500) : '';
+    order.items.forEach((item: any) => {
+      if (!state.sellerProducts.some((product) => product.id === item.productId)) return;
+      if (state.reviews.some((review) => review.userId === user.id && review.listingId === item.productId)) return;
+      state.reviews.push({ id: randomBytes(10).toString('hex'), listingId: item.productId, userId: user.id, reviewer: user.name, rating, comment, createdAt: order.receivedAt });
+    });
+  }
   saveState();
   response.json({ order: safeOrder(order) });
   void payOutReleasedOrder(order);
@@ -1218,6 +1261,7 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
   const parsed = registerSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
   const { name, username, email, password, role, businessName, niche, ref } = parsed.data;
+  if (role === 'dispatch' && !dispatchSignInEnabled()) fail(403, 'Dispatch rider sign-up is paused. Unishop handles deliveries for now.');
   const sanitizedName = sanitizeText(name, '');
   const sanitizedUsername = sanitizeText(username, '').toLowerCase();
   const sanitizedEmail = sanitizeText(email, '').toLowerCase();
@@ -1303,6 +1347,7 @@ app.post('/api/auth/login', asyncRoute(async (request: Request, response: Respon
     fail(401, 'Username or password is incorrect.');
   }
   if (user.role === 'admin') fail(403, 'Use the admin portal password to sign in.');
+  if (user.role === 'dispatch' && !dispatchSignInEnabled()) fail(403, 'Dispatch is handled by Unishop for now. Rider sign-in is paused.');
   if (user.suspendedAt) fail(403, 'This account is suspended. Contact Unishop support for assistance.');
   if (!user.emailVerified && process.env.NODE_ENV !== 'test' && process.env.AUTO_VERIFY_EMAIL === 'false') {
     fail(403, 'Verify your email with the one-time code before logging in.');

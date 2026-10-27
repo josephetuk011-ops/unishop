@@ -75,3 +75,7 @@ When on, sellers and service providers submit their NIN from Profile (not at sig
 ## Referral rewards
 
 Every account has a link (`/?ref=CODE`, built from `PUBLIC_URL` or the request host). A friend who signs up with it gets ₦100 off their first order. When that friend's first paid order has a subtotal of ₦1,000 or more, the referrer gets ₦100 off their next order. Discounts are applied server-side at checkout, capped at half the subtotal, and paid by Unishop: seller and rider settlements are unchanged.
+
+## Order tracking
+
+Paid product orders show a Track goods panel in the customer workspace: order confirmed, collected from seller, on dispatch, at your doorstep. The admin moves each order forward in the admin portal (Orders, Delivery tracking); steps only move forward and the customer is notified. When it reaches the doorstep the customer taps Received, okay and can rate the product. That confirmation releases the vendor's earnings for withdrawal. Dispatch rider sign-up and sign-in are paused unless `DISPATCH_SIGNIN_ENABLED=true`.
