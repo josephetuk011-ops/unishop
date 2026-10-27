@@ -649,6 +649,8 @@ authForm.addEventListener('submit', async (event) => {
       const businessName = form.elements.business.value.trim();
       if (businessName) credentials.businessName = businessName;
       if (selectedAuthRole === 'provider') credentials.niche = form.elements.niche.value;
+      const referral = localStorage.getItem('unishop-ref');
+      if (referral) credentials.ref = referral;
     }
     const result = await apiRequest(`/api/auth/${registering ? 'register' : 'login'}`, {
       method: 'POST',
@@ -656,6 +658,7 @@ authForm.addEventListener('submit', async (event) => {
     });
     sessionToken = result.token;
     currentUser = result.user;
+    if (registering) localStorage.removeItem('unishop-ref');
     localStorage.setItem('unishop-token', sessionToken);
     localStorage.setItem('unishop-last-username', credentials.username.trim().toLowerCase());
     localStorage.setItem('unishop-user', JSON.stringify(currentUser));
@@ -715,3 +718,43 @@ fetch('/api/products').then((response) => response.ok ? response.json() : []).th
 }).catch(() => {});
 verifyPaymentReturn();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+
+// Referral links: remember ?ref= from a shared link, and let signed-in people copy and share their own.
+(function referrals() {
+  const incoming = new URLSearchParams(window.location.search).get('ref');
+  if (incoming && /^[A-Za-z0-9]{6,12}$/.test(incoming)) {
+    localStorage.setItem('unishop-ref', incoming.toUpperCase());
+    history.replaceState(null, '', window.location.pathname + window.location.hash);
+  }
+  const backdropNode = document.querySelector('#referral-backdrop');
+  const button = document.querySelector('#referral-button');
+  if (!backdropNode || !button) return;
+  const linkInput = document.querySelector('#referral-link');
+  const countNode = document.querySelector('#referral-count');
+  const shareButton = document.querySelector('#referral-share');
+  const close = () => backdropNode.classList.remove('open');
+  button.addEventListener('click', async () => {
+    if (!sessionToken || !currentUser) {
+      openAuth('customer', 'register');
+      showToast('Create an account or sign in to get your referral link.');
+      return;
+    }
+    try {
+      const data = await apiRequest('/api/me/referral');
+      linkInput.value = data.link;
+      document.querySelector('#referral-whatsapp').href = `https://wa.me/?text=${encodeURIComponent(`Shop and book trusted services in Uyo on Unishop: ${data.link}`)}`;
+      countNode.textContent = data.count ? `${data.count} ${data.count === 1 ? 'person has' : 'people have'} joined with your link.` : 'No one has joined with your link yet.';
+      shareButton.hidden = !navigator.share;
+      backdropNode.classList.add('open');
+    } catch (error) { showToast(error.message); }
+  });
+  document.querySelector('#referral-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(linkInput.value); }
+    catch { linkInput.select(); document.execCommand('copy'); }
+    showToast('Referral link copied.');
+  });
+  shareButton.addEventListener('click', () => navigator.share({ title: 'Unishop', text: 'Shop and book trusted services in Uyo on Unishop.', url: linkInput.value }).catch(() => {}));
+  document.querySelector('#referral-close').addEventListener('click', close);
+  backdropNode.addEventListener('click', (event) => { if (event.target === backdropNode) close(); });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
+})();

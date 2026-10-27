@@ -47,6 +47,24 @@ describe('E-Marketplace Application', () => {
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
   });
 
+  it('gives each account a referral link and links people who sign up with it', async () => {
+    const stamp = Date.now();
+    const mk = (username: string, extra: object = {}) => request(app).post('/api/auth/register').send({ name: 'Ref Person', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'customer', ...extra });
+    const owner = await mk(`refowner${stamp}`);
+    const auth = { Authorization: `Bearer ${owner.body.token}` };
+    expect((await request(app).get('/api/me/referral')).status).toBe(401);
+    const first = await request(app).get('/api/me/referral').set(auth);
+    expect(first.body.code).toMatch(/^[A-Z0-9]{8}$/);
+    expect(first.body.link).toContain(`/?ref=${first.body.code}`);
+    expect(first.body.count).toBe(0);
+    expect((await request(app).get('/api/me/referral').set(auth)).body.code).toBe(first.body.code);
+    expect((await mk(`refjoin${stamp}`, { ref: first.body.code.toLowerCase() })).status).toBe(201);
+    expect((await mk(`refbad${stamp}`, { ref: 'nope!' })).status).toBe(201);
+    const after = await request(app).get('/api/me/referral').set(auth);
+    expect(after.body.count).toBe(1);
+    expect(after.body.recent[0].name).toBe('Ref');
+  });
+
   it('does not serve an admin dashboard from the storefront', async () => {
     expect((await request(app).get('/admin')).status).toBe(404);
     expect((await request(app).get('/')).text).not.toMatch(/Admin dashboard/);

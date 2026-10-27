@@ -23,7 +23,7 @@ const scrypt = promisify(scryptCallback);
 const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -50,7 +50,8 @@ const registerSchema = z.object({
   password: z.string().min(10).max(128),
   role: z.enum(registrationRoles),
   businessName: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(2).max(120).optional()),
-  niche: z.string().trim().max(80).optional()
+  niche: z.string().trim().max(80).optional(),
+  ref: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6,12}$/).optional().catch(undefined)
 });
 const loginSchema = z.object({
   username: z.string().trim().min(1, 'Enter your username.').max(30, 'Enter your username.'),
@@ -205,6 +206,16 @@ function storeNin(user: User, nin: string) {
   user.ninEncrypted = encryptNin(nin);
   user.ninLast4 = nin.slice(-4);
   user.ninSubmittedAt = new Date().toISOString();
+}
+const referralAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function referralCodeFor(user: User) {
+  if (user.referralCode) return user.referralCode;
+  let code = '';
+  do { code = Array.from(randomBytes(8)).map((byte) => referralAlphabet[byte % referralAlphabet.length]).join(''); }
+  while (state.users.some((member) => member.referralCode === code));
+  user.referralCode = code;
+  saveState();
+  return code;
 }
 const requiresNin = (role: Role) => role === 'seller' || role === 'provider';
 const ninVerifierConfigured = () => Boolean(process.env.DOJAH_APP_ID && process.env.DOJAH_SECRET_KEY);
@@ -1111,7 +1122,7 @@ app.patch('/api/dispatch/jobs/:reference', (request: Request, response: Response
 app.post('/api/auth/register', asyncRoute(async (request: Request, response: Response) => {
   const parsed = registerSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
-  const { name, username, email, password, role, businessName, niche } = parsed.data;
+  const { name, username, email, password, role, businessName, niche, ref } = parsed.data;
   const sanitizedName = sanitizeText(name, '');
   const sanitizedUsername = sanitizeText(username, '').toLowerCase();
   const sanitizedEmail = sanitizeText(email, '').toLowerCase();
@@ -1137,8 +1148,14 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
     otpCode,
     otpExpiresAt: autoVerifyEmail ? undefined : Date.now() + 10 * 60 * 1000
   };
+  const referrer = ref ? state.users.find((member) => member.referralCode === ref && !member.suspendedAt) : undefined;
+  if (referrer) user.referredBy = referrer.id;
   state.users.push(user);
   saveState();
+  if (referrer) {
+    auditAction('referral.signup', referrer.id, { referredUserId: user.id });
+    notifyUser(referrer.id, { title: 'Someone joined with your link', body: `${sanitizedName.split(' ')[0]} just joined Unishop using your referral link.`, url: '/' });
+  }
   const accessToken = tokenFor(user);
   const refreshToken = refreshTokenFor(user);
   setAuthCookies(response, accessToken, refreshToken);
@@ -1280,6 +1297,18 @@ app.patch('/api/profile', (request: Request, response: Response) => {
   saveState();
   auditAction('profile.updated', user.id, { role: user.role });
   response.json({ user: cleanUser(user), complete: hasCompleteBusinessProfile(user) });
+});
+app.get('/api/me/referral', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  const code = referralCodeFor(user);
+  const base = (process.env.PUBLIC_URL || `${request.protocol}://${request.get('host')}`).replace(/\/$/, '');
+  const referred = state.users.filter((member) => member.referredBy === user.id).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  response.json({
+    code,
+    link: `${base}/?ref=${code}`,
+    count: referred.length,
+    recent: referred.slice(0, 5).map((member) => ({ name: member.name.split(' ')[0], joinedAt: member.createdAt }))
+  });
 });
 app.get('/api/me', (request: Request, response: Response) => response.json({ user: cleanUser(requireUser(request)) }));
 app.get('/api/me/orders', (request: Request, response: Response) => {
