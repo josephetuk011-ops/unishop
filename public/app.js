@@ -216,6 +216,8 @@ function renderRelatedProducts(product) {
 }
 
 function openProductDetail(productId) {
+  window.location.assign(`/product.html?id=${encodeURIComponent(productId)}`);
+  return;
   const product = products.find((item) => item.id === productId);
   if (!product) return;
   const media = document.querySelector('#detail-media');
@@ -875,10 +877,16 @@ function openProductFromLink() {
   const match = location.hash.match(/^#product=(.+)$/);
   if (!match) return;
   const productId = decodeURIComponent(match[1]);
-  if (products.some((item) => item.id === productId)) { history.replaceState(null, '', location.pathname + location.search); openProductDetail(productId); }
+  if (products.some((item) => item.id === productId)) { openProductDetail(productId); }
+}
+function openBagFromLink() {
+  if (new URLSearchParams(location.search).get('bag') !== '1') return;
+  history.replaceState(null, '', location.pathname + location.hash);
+  renderCart();
+  openCart();
 }
 const catalogIds = products.map((product) => product.id);
-loadProducts();
+loadProducts().then(openBagFromLink);
 verifyPaymentReturn();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 
