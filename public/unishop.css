@@ -450,3 +450,6 @@ body.dark-theme .referral-link-row input { background: #1b2233; color: #f1f4fa; 
 .size-chip:disabled { opacity: .4; cursor: not-allowed; }
 .rate-row { display: flex; align-items: center; gap: 4px; margin: 8px 0; font-size: 13px; color: #697694; }
 .rate-star { border: 0; background: none; color: #d4a017; font-size: 20px; cursor: pointer; padding: 0 2px; }
+
+.vendor-link{color:inherit;text-decoration:underline;text-underline-offset:2px;font-weight:600}
+.vendor-link:hover{color:#2f56c8}

@@ -1,0 +1,27 @@
+.vendor-main{max-width:1080px;margin:0 auto;padding:28px 18px 60px}
+.vendor-loading,.vendor-empty{color:#5c6678;text-align:center;padding:48px 0}
+.vendor-head{display:flex;gap:20px;align-items:center;flex-wrap:wrap;padding:22px;border:1px solid #e3e8f0;border-radius:18px;background:#fff}
+.vendor-avatar{width:96px;height:96px;border-radius:50%;object-fit:cover;background:#eef2fb;flex:none}
+.vendor-id{flex:1;min-width:220px}
+.vendor-id h1{margin:0 0 4px;font-size:1.7rem}
+.vendor-id p{margin:4px 0;color:#4a5468}
+.vendor-meta{font-size:.9rem;color:#5c6678}
+.vendor-score{text-align:center;min-width:150px}
+.vendor-score strong{display:block;font-size:2.2rem;line-height:1.1}
+.vendor-score span{color:#5c6678;font-size:.85rem}
+.vendor-stars{color:#f5a623;letter-spacing:2px}
+.vendor-bars{margin-top:8px;display:grid;gap:3px;font-size:.78rem;color:#5c6678;text-align:left}
+.vendor-bar{display:flex;align-items:center;gap:6px}
+.vendor-bar i{flex:1;height:6px;border-radius:3px;background:#e9edf5;overflow:hidden}
+.vendor-bar i b{display:block;height:100%;background:#f5a623}
+.vendor-section{margin-top:30px}
+.vendor-section h2{font-size:1.2rem;margin:0 0 12px}
+.vendor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
+.vendor-card{display:block;border:1px solid #e3e8f0;border-radius:14px;overflow:hidden;background:#fff;color:inherit;text-decoration:none}
+.vendor-card img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#eef2fb}
+.vendor-card div{padding:10px 12px}
+.vendor-card h3{margin:0 0 4px;font-size:1rem}
+.vendor-card small{color:#5c6678}
+.vendor-review{padding:12px 0;border-bottom:1px solid #e9edf5}
+.vendor-review p{margin:4px 0 0;color:#4a5468}
+.help-back-link{color:#1f3a8a;font-weight:600;text-decoration:none}
