@@ -47,17 +47,9 @@ describe('E-Marketplace Application', () => {
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
   });
 
-  it('should redirect the marketplace admin link to the separate console', async () => {
-    const previousAdminUrl = process.env.ADMIN_APP_URL;
-    process.env.ADMIN_APP_URL = 'https://admin.example.test';
-    try {
-      const response = await request(app).get('/admin');
-      expect(response.status).toBe(302);
-      expect(response.headers.location).toBe('https://admin.example.test');
-    } finally {
-      if (previousAdminUrl === undefined) delete process.env.ADMIN_APP_URL;
-      else process.env.ADMIN_APP_URL = previousAdminUrl;
-    }
+  it('does not serve an admin dashboard from the storefront', async () => {
+    expect((await request(app).get('/admin')).status).toBe(404);
+    expect((await request(app).get('/')).text).not.toMatch(/Admin dashboard/);
   });
 
   it('gates admin access by password and audits reversible provider suspension', async () => {

@@ -636,10 +636,6 @@ app.get('/api/app-downloads', (_request: Request, response: Response) => {
   }
 });
 
-app.get('/admin', (_request, response) => {
-  if (!process.env.ADMIN_APP_URL) return response.status(503).send('The separate Unishop admin console has not been configured yet.');
-  response.redirect(302, process.env.ADMIN_APP_URL);
-});
 app.get('/dashboard', (_request, response) => response.redirect('/dashboard.html'));
 
 app.get('/api/health', (_request, response) => response.json({ status: 'ok', payments: paystackSecret ? 'configured' : 'not-configured', storage: process.env.MARKETPLACE_DATA_PATH ? 'persistent-path' : 'ephemeral' }));

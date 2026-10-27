@@ -193,58 +193,6 @@ function ninPanel(user) {
 function businessProfileComplete(user) {
   return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && (!['seller', 'provider'].includes(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
-function adminDashboard() {
-  const { metrics, users = [], orders = [], bookings = [], payouts = [], breakdown = {} } = dashboardData;
-  const newestFirst = (records) => records.slice().sort((left, right) => (Date.parse(right.createdAt) || 0) - (Date.parse(left.createdAt) || 0));
-  const recentUsers = newestFirst(users);
-  const recentOrders = newestFirst(orders);
-  const recentBookings = newestFirst(bookings);
-  const recentPayouts = newestFirst(payouts);
-  const statusRows = (statuses, total) => {
-    const entries = Object.entries(statuses || {});
-    if (!entries.length) return '<div class="empty-state">No activity recorded yet.</div>';
-    return entries.map(([status, count]) => `<div class="admin-status-row"><div><span>${escapeHtml(status.replace(/-/g, ' '))}</span><strong>${count}</strong></div><div class="admin-status-track"><span style="width:${Math.max(4, Math.round((count / Math.max(total, 1)) * 100))}%"></span></div></div>`).join('');
-  };
-  const miniOrderRows = recentOrders.slice(0, 4).map((order) => `<div class="admin-list-row"><div><strong>${escapeHtml(order.reference)}</strong><small>${formatDate(order.createdAt)}</small></div><div class="admin-mini-meta"><b>${formatMoney(order.totalNaira)}</b><span class="status-pill ${escapeHtml(order.paymentStatus || 'pending')}">${escapeHtml(order.paymentStatus || 'unknown')}</span></div></div>`).join('') || '<div class="empty-state">No marketplace orders yet.</div>';
-  const miniUserRows = recentUsers.slice(0, 4).map((user) => `<div class="admin-list-row"><div><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.email)}</small></div><span class="status-pill ${escapeHtml(user.role)}">${escapeHtml(user.role)}</span></div>`).join('') || '<div class="empty-state">No users recorded yet.</div>';
-  const orderTableRows = recentOrders.map((order) => `<tr><td><strong>${escapeHtml(order.reference)}</strong></td><td>${formatDate(order.createdAt)}</td><td>${formatMoney(order.totalNaira)}</td><td><span class="status-pill ${escapeHtml(order.paymentStatus || 'pending')}">${escapeHtml(order.paymentStatus || 'unknown')}</span></td></tr>`);
-  const bookingTableRows = recentBookings.map((booking) => `<tr><td><strong>${escapeHtml(booking.service || 'Service booking')}</strong><br><small>${escapeHtml(booking.provider || 'Provider')}</small></td><td>${escapeHtml(booking.userId ? `Customer ${String(booking.userId).slice(0, 8)}` : 'Customer')}</td><td>${formatDate(booking.createdAt)}</td><td>${booking.amountNaira ? formatMoney(booking.amountNaira) : 'Quote pending'}</td><td><span class="status-pill ${escapeHtml(booking.status || 'pending')}">${escapeHtml(booking.status || 'unknown')}</span></td></tr>`);
-  const userTableRows = recentUsers.map((user) => {
-    const searchable = `${user.name} ${user.email} ${user.role} ${user.businessName || ''} ${user.niche || ''}`.toLowerCase();
-    return `<tr data-admin-search-row data-search="${escapeHtml(searchable)}"><td><strong>${escapeHtml(user.name)}</strong></td><td>${escapeHtml(user.email)}</td><td><span class="status-pill ${escapeHtml(user.role)}">${escapeHtml(user.role)}</span></td><td>${escapeHtml(user.businessName || user.niche || '—')}</td><td>${formatDate(user.createdAt)}</td></tr>`;
-  });
-  const payoutTableRows = recentPayouts.map((payout) => `<tr><td><strong>${escapeHtml(payout.reference || 'Transfer')}</strong></td><td>${formatDate(payout.createdAt)}</td><td>${formatMoney(payout.amountNaira)}</td><td><span class="status-pill ${escapeHtml(payout.status || 'pending')}">${escapeHtml((payout.status || 'unknown').replace(/-/g, ' '))}</span></td></tr>`);
-  const title = selectedView === 'listings' ? 'Users'
-    : selectedView === 'activity' ? 'Orders and bookings'
-      : selectedView === 'earnings' ? 'Payout activity' : 'Marketplace overview';
-  const subtitle = selectedView === 'listings' ? 'Review the latest registered marketplace accounts.'
-    : selectedView === 'activity' ? 'Monitor recent customer orders and service bookings.'
-      : selectedView === 'earnings' ? 'Review recorded transfers. This is not a withdrawable balance.'
-        : 'A live snapshot of marketplace activity across Uyo.';
-
-  if (selectedView === 'listings') {
-    return `${header(title, subtitle)}${panel('User directory', `<div class="admin-search"><label for="admin-user-search">Search name, email, role or business</label><input id="admin-user-search" type="search" placeholder="Start typing to filter"><span id="admin-user-results">${recentUsers.length} accounts</span></div>${table(['Name', 'Email', 'Role', 'Business or niche', 'Joined'], userTableRows, 'No users recorded yet.')}`)}`;
-  }
-  if (selectedView === 'activity') {
-    return `${header(title, subtitle)}${panel('Recent orders', table(['Reference', 'Date', 'Order total', 'Payment'], orderTableRows, 'No marketplace orders yet.'))}${panel('Recent service bookings', table(['Service', 'Customer', 'Date', 'Quoted price', 'Status'], bookingTableRows, 'No service bookings yet.'))}`;
-  }
-  if (selectedView === 'earnings') {
-    const payoutCount = Object.values(breakdown.payouts || {}).reduce((sum, count) => sum + count, 0);
-    const recentPayoutVolume = recentPayouts.reduce((sum, payout) => sum + Number(payout.amountNaira || 0), 0);
-    return `${header(title, subtitle)}<div class="metric-grid admin-metric-grid">${metric('Transfer records', payoutCount, 'All recorded statuses')}${metric('Recent transfer volume', formatMoney(recentPayoutVolume), `Latest ${recentPayouts.length} records`)}${metric('Paid order volume', formatMoney(metrics.totalRevenue), 'Confirmed marketplace order totals')}</div>${panel('Recent payouts', table(['Reference', 'Date', 'Amount', 'Status'], payoutTableRows, 'No payout records yet.'))}${panel('Payout status', `<div class="admin-status-list">${statusRows(breakdown.payouts, payoutCount)}</div>`)}`;
-  }
-  const roleCount = Object.values(breakdown.roles || {}).reduce((sum, count) => sum + count, 0);
-  const orderCount = Object.values(breakdown.orders || {}).reduce((sum, count) => sum + count, 0);
-  const bookingCount = Object.values(breakdown.bookings || {}).reduce((sum, count) => sum + count, 0);
-  const catalogCount = Object.values(breakdown.catalog || {}).reduce((sum, count) => sum + count, 0);
-  const bookingMiniRows = recentBookings.slice(0, 4).map((booking) => `<div class="admin-list-row"><div><strong>${escapeHtml(booking.service || booking.provider || 'Service booking')}</strong><small>${escapeHtml(booking.provider || 'Provider')} · ${formatDate(booking.createdAt)}</small></div><span class="status-pill ${escapeHtml(booking.status || 'pending')}">${escapeHtml(booking.status || 'unknown')}</span></div>`).join('') || '<div class="empty-state">No service bookings yet.</div>';
-  return `${header(title, subtitle)}
-    <section class="admin-hero"><div><span class="eyebrow">UNISHOP · ADMIN</span><h3>Marketplace at a glance</h3><p>${metrics.pendingPayments ? `${metrics.pendingPayments} payment${metrics.pendingPayments === 1 ? '' : 's'} awaiting confirmation` : 'No payments currently awaiting confirmation'} · ${metrics.totalListings} live listings</p></div><span class="admin-live-indicator"><i></i> Live data</span></section>
-    <div class="metric-grid admin-metric-grid">${metric('Marketplace accounts', metrics.totalUsers, 'Across all roles')}${metric('Paid order volume', formatMoney(metrics.totalRevenue), `${metrics.paidOrders} confirmed orders`)}${metric('Service bookings', metrics.totalBookings, 'All recorded statuses')}${metric('Payments to review', metrics.pendingPayments, 'Awaiting Paystack confirmation')}</div>
-    <div class="dashboard-grid admin-grid"><section class="panel admin-panel"><header class="panel-heading"><h3>Payment status</h3><span>${orderCount} orders</span></header><div class="panel-body admin-status-list">${statusRows(breakdown.orders, orderCount)}</div></section><section class="panel admin-panel"><header class="panel-heading"><h3>Account mix</h3><span>${roleCount} accounts</span></header><div class="panel-body admin-status-list">${statusRows(breakdown.roles, roleCount)}</div></section></div>
-    <div class="dashboard-grid admin-grid"><section class="panel admin-panel"><header class="panel-heading"><h3>Recent orders</h3><a href="#activity" data-view="activity">View all</a></header><div class="panel-body admin-list">${miniOrderRows}</div></section><section class="panel admin-panel"><header class="panel-heading"><h3>Recent bookings</h3><a href="#activity" data-view="activity">View all</a></header><div class="panel-body admin-list">${bookingMiniRows}</div></section></div>
-    <div class="dashboard-grid admin-grid"><section class="panel admin-panel"><header class="panel-heading"><h3>New accounts</h3><a href="#listings" data-view="listings">Open directory</a></header><div class="panel-body admin-list">${miniUserRows}</div></section><section class="panel admin-panel"><header class="panel-heading"><h3>Marketplace inventory</h3><span>${metrics.totalListings} listings</span></header><div class="panel-body admin-status-list">${statusRows(breakdown.catalog, catalogCount)}</div></section></div>`;
-}
 function dispatchDashboard() {
   const { jobs, metrics, user } = dashboardData;
   if (selectedView === 'profile') return profileForm();
@@ -296,14 +244,8 @@ function renderDashboard() {
   const seller = dashboardData.role === 'seller';
   document.querySelector('#listing-nav-label').textContent = seller ? 'Products' : dashboardData.role === 'provider' ? 'Service portfolio' : dashboardData.role === 'dispatch' ? 'Delivery area' : dashboardData.role === 'admin' ? 'Marketplace' : 'Orders';
   document.querySelector('#activity-nav-label').textContent = dashboardData.role === 'provider' ? 'Bookings & reviews' : dashboardData.role === 'dispatch' ? 'Delivery jobs' : dashboardData.role === 'seller' ? 'Orders' : dashboardData.role === 'admin' ? 'Operations' : 'Bookings';
-  document.querySelector('#earnings-nav-label').textContent = dashboardData.role === 'admin' ? 'Payouts' : 'Earnings';
-  if (dashboardData.role === 'admin') {
-    document.querySelector('#listing-nav-label').textContent = 'Users';
-    document.querySelector('#activity-nav-label').textContent = 'Orders';
-  }
-  workspace.innerHTML = dashboardData.role === 'admin'
-    ? adminDashboard()
-    : dashboardData.role === 'provider'
+  document.querySelector('#earnings-nav-label').textContent = 'Earnings';
+  workspace.innerHTML = dashboardData.role === 'provider'
       ? providerDashboard()
       : seller ? sellerDashboard() : dashboardData.role === 'dispatch' ? dispatchDashboard() : customerDashboard();
   populatePayoutBanks();
@@ -313,6 +255,7 @@ function renderDashboard() {
 async function refreshDashboard() {
   try {
     dashboardData = await api('/api/dashboard');
+    if (dashboardData.role === 'admin') return endSession();
     if (['seller', 'provider', 'dispatch'].includes(dashboardData.role) && !businessProfileComplete(dashboardData.user)) selectedView = 'profile';
   } catch (error) {
     if (error.sessionExpired || !token) return endSession();
@@ -365,18 +308,6 @@ document.addEventListener('click', (event) => {
   event.preventDefault();
   selectedView = link.dataset.view;
   renderDashboard();
-});
-
-document.addEventListener('input', (event) => {
-  if (event.target.id !== 'admin-user-search') return;
-  const query = event.target.value.trim().toLowerCase();
-  const rows = [...workspace.querySelectorAll('[data-admin-search-row]')];
-  let visible = 0;
-  rows.forEach((row) => {
-    row.hidden = !row.dataset.search.includes(query);
-    if (!row.hidden) visible += 1;
-  });
-  document.querySelector('#admin-user-results').textContent = `${visible} account${visible === 1 ? '' : 's'}`;
 });
 
 document.addEventListener('click', async (event) => {
