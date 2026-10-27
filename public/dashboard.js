@@ -568,3 +568,4 @@ else refreshDashboard().catch(() => {
   localStorage.removeItem('unishop-user');
   window.location.replace('/');
 });
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

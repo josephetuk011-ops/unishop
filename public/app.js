@@ -714,3 +714,4 @@ fetch('/api/products').then((response) => response.ok ? response.json() : []).th
   }
 }).catch(() => {});
 verifyPaymentReturn();
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
