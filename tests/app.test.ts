@@ -1,6 +1,7 @@
 import request from 'supertest';
 import app from '../src/app';
 
+process.env.NIN_VERIFICATION_ENABLED = 'true';
 let ninCounter = 0;
 const uniqueNin = () => String(30000000000 + (Date.now() % 1000000) * 1000 + (ninCounter++ % 1000));
 
@@ -167,6 +168,17 @@ describe('E-Marketplace Application', () => {
     const login = await request(app).post('/api/auth/login').send({ username, password: 'customerpassword123' });
     expect(login.status).toBe(200);
     expect(login.body.user.role).toBe('customer');
+  });
+
+  it('has NIN collection switched off by default', async () => {
+    delete process.env.NIN_VERIFICATION_ENABLED;
+    try {
+      const username = `nooff${Date.now()}`;
+      const reg = await request(app).post('/api/auth/register').send({ name: 'No Nin', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Plain Shop' });
+      expect(reg.status).toBe(201);
+      expect(reg.body.user.ninRequired).toBe(false);
+      expect((await request(app).post('/api/profile/nin').set('Authorization', `Bearer ${reg.body.token}`).send({ nin: uniqueNin() })).status).toBe(404);
+    } finally { process.env.NIN_VERIFICATION_ENABLED = 'true'; }
   });
 
   it('does not ask for a NIN at signup; verifies it from the profile with the provider and never returns it', async () => {

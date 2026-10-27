@@ -23,7 +23,7 @@ const scrypt = promisify(scryptCallback);
 const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -217,7 +217,25 @@ function referralCodeFor(user: User) {
   saveState();
   return code;
 }
+const REFERRAL_REWARD_NAIRA = 100;
+const REFERRAL_MIN_ORDER_NAIRA = 1000;
+// A referred customer gets 100 naira off their first order; a referrer earns 100 naira off for each referred customer's first paid order.
+function rewardPreview(user: User, subtotalNaira: number) {
+  const none = { discountNaira: 0, welcome: false, credits: 0 };
+  const welcomeAvailable = Boolean(user.referredBy && !user.referralWelcomeUsed);
+  const creditsAvailable = Math.max(0, user.referralCredits || 0);
+  const units = (welcomeAvailable ? 1 : 0) + creditsAvailable;
+  if (!units || subtotalNaira < REFERRAL_MIN_ORDER_NAIRA) return none;
+  const heldByOpenOrder = state.orders.some((order) => order.userId === user.id && order.paymentStatus === 'pending' && order.rewardDiscountNaira > 0 && Date.now() - Date.parse(order.createdAt) < 60 * 60 * 1000);
+  if (heldByOpenOrder) return none;
+  const discountNaira = Math.min(units * REFERRAL_REWARD_NAIRA, Math.floor(subtotalNaira / 2 / REFERRAL_REWARD_NAIRA) * REFERRAL_REWARD_NAIRA);
+  const used = discountNaira / REFERRAL_REWARD_NAIRA;
+  const welcome = welcomeAvailable && used > 0;
+  return { discountNaira, welcome, credits: used - (welcome ? 1 : 0) };
+}
 const requiresNin = (role: Role) => role === 'seller' || role === 'provider';
+// NIN collection is switched off for now. Set NIN_VERIFICATION_ENABLED=true to bring it back.
+const ninEnabled = () => process.env.NIN_VERIFICATION_ENABLED === 'true';
 const ninVerifierConfigured = () => Boolean(process.env.DOJAH_APP_ID && process.env.DOJAH_SECRET_KEY);
 const nameTokens = (value: string) => value.toLowerCase().normalize('NFKD').replace(/[^a-z\s'-]/g, ' ').split(/[\s'-]+/).filter((token) => token.length > 1);
 // Looks the NIN up with Dojah (NIMC data) and compares the holder's names with the account name.
@@ -281,7 +299,7 @@ function asyncRoute(handler: (request: Request, response: Response) => Promise<u
 }
 
 function cleanUser(user: User) {
-  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, niche: user.niche, ninLast4: user.ninLast4, ninStatus: user.ninLast4 ? (user.ninStatus || 'pending') : undefined, ninVerifiedAt: user.ninVerifiedAt, ninNote: user.ninNote, createdAt: user.createdAt };
+  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, niche: user.niche, ninLast4: user.ninLast4, ninStatus: user.ninLast4 ? (user.ninStatus || 'pending') : undefined, ninVerifiedAt: user.ninVerifiedAt, ninNote: user.ninNote, ninRequired: ninEnabled() && requiresNin(user.role), createdAt: user.createdAt };
 }
 
 function publicBusinessProfile(userId: string | undefined) {
@@ -291,7 +309,7 @@ function publicBusinessProfile(userId: string | undefined) {
 }
 
 function hasCompleteBusinessProfile(user: User) {
-  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/') && (!requiresNin(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
+  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/') && (!ninEnabled() || !requiresNin(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
 
 function legacyUsername(user: User) {
@@ -376,6 +394,21 @@ async function completePayment(reference: string, payment: any) {
         booking.status = 'confirmed';
         booking.paidAt = order.paidAt;
         booking.settlementStatus = 'held';
+      }
+    }
+    const buyer = state.users.find((member) => member.id === order.userId);
+    if (buyer) {
+      if (order.rewardDiscountNaira > 0) {
+        if (order.rewardWelcome) buyer.referralWelcomeUsed = true;
+        buyer.referralCredits = Math.max(0, (buyer.referralCredits || 0) - (order.rewardCredits || 0));
+      }
+      const referrer = buyer.referredBy ? state.users.find((member) => member.id === buyer.referredBy) : undefined;
+      const qualifyingSubtotal = order.totalNaira + (order.rewardDiscountNaira || 0) - 500;
+      if (referrer && !buyer.referralRewarded && qualifyingSubtotal >= REFERRAL_MIN_ORDER_NAIRA) {
+        buyer.referralRewarded = true;
+        referrer.referralCredits = (referrer.referralCredits || 0) + 1;
+        auditAction('referral.rewarded', referrer.id, { referredUserId: buyer.id, orderReference: order.reference });
+        notifyUser(referrer.id, { title: 'You earned ₦100 off', body: `${buyer.name.split(' ')[0]} placed their first order. ₦100 off your next order is ready.`, url: '/' });
       }
     }
     saveState();
@@ -1245,6 +1278,7 @@ app.post('/api/auth/refresh', (request: Request, response: Response) => {
 
 app.post('/api/profile/nin', asyncRoute(async (request: Request, response: Response) => {
   const user = requireUser(request);
+  if (!ninEnabled()) fail(404, 'NIN verification is not enabled.');
   if (!requiresNin(user.role)) fail(403, 'NIN verification is only needed for sellers and service providers.');
   if (user.ninStatus === 'verified') fail(409, 'Your NIN is already verified.');
   const parsed = z.object({ nin: z.string().trim().regex(/^\d{11}$/, 'Enter your 11-digit NIN.') }).safeParse(request.body || {});
@@ -1307,6 +1341,10 @@ app.get('/api/me/referral', (request: Request, response: Response) => {
     code,
     link: `${base}/?ref=${code}`,
     count: referred.length,
+    rewardNaira: REFERRAL_REWARD_NAIRA,
+    minOrderNaira: REFERRAL_MIN_ORDER_NAIRA,
+    welcomeAvailable: Boolean(user.referredBy && !user.referralWelcomeUsed),
+    credits: Math.max(0, user.referralCredits || 0),
     recent: referred.slice(0, 5).map((member) => ({ name: member.name.split(' ')[0], joinedAt: member.createdAt }))
   });
 });
@@ -1399,6 +1437,8 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     neighbourhood = delivery.neighbourhood.trim();
     receiptEmail = email.trim().toLowerCase();
   }
+  const reward = user ? rewardPreview(user, totalNaira - 500) : { discountNaira: 0, welcome: false, credits: 0 };
+  totalNaira -= reward.discountNaira;
   const reference = `UNI-${Date.now()}-${randomBytes(6).toString('hex')}`;
   const order = {
     id: randomBytes(12).toString('hex'),
@@ -1413,6 +1453,9 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     neighbourhood,
     items: orderItems,
     totalNaira,
+    rewardDiscountNaira: reward.discountNaira,
+    rewardWelcome: reward.welcome,
+    rewardCredits: reward.credits,
     dispatchFeeNaira: booking ? 0 : 500,
     customerDispatchFeeNaira: booking ? 500 : 0,
     sellerDispatchContributionNaira: settlementLines.reduce((sum, line) => sum + line.dispatchContributionNaira, 0),

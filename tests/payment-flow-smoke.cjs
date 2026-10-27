@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 
 process.env.NODE_ENV = 'test';
+process.env.NIN_VERIFICATION_ENABLED = 'true';
 process.env.PAYSTACK_SECRET_KEY = 'sk_test_mock_only';
 process.env.JWT_SECRET = 'local-integration-signing-secret';
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'unishop-payment-flow-'));

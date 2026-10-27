@@ -429,3 +429,12 @@ body.dark-theme .auth-switch { color: #a5b1c7; }
 .referral-count { margin: 14px 0 0; font-size: 11px; color: var(--muted); }
 @media (max-width: 760px) { .referral-button span:last-child { font-size: 10px; } }
 body.dark-theme .referral-link-row input { background: #1b2233; color: #f1f4fa; border-color: #2c3550; }
+
+.short-media { position: relative; }
+.short-watermark { position: absolute; left: 8px; bottom: 50px; display: flex; align-items: center; gap: 6px; max-width: calc(100% - 16px); padding: 3px 9px 3px 3px; border-radius: 999px; background: rgba(0,0,0,.45); color: #fff; font-size: 11px; font-weight: 700; pointer-events: none; }
+.short-watermark img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; background: #fff; }
+.short-watermark span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.short-share { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.5); color: #fff; cursor: pointer; }
+.cart-reward { display: flex; justify-content: space-between; margin-top: 8px; color: #0b7a3b; font-size: 14px; }
+.cart-reward[hidden] { display: none; }
+.cart-reward-line strong, .cart-reward-line span { color: #0b7a3b; }

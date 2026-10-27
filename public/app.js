@@ -60,14 +60,18 @@ function escapeShortText(value = '') {
   return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 }
 
+function shortOverlay(seller, title) {
+  return `<button class="short-share" type="button" data-short-share="${escapeShortText(title)}" aria-label="Share this short"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M18 16a3 3 0 0 0-2.2 1l-6.6-3.3a3 3 0 0 0 0-1.4L15.800 8a3 3 0 1 0-.8-1.800L8.400 9.500a3 3 0 1 0 0 5l6.600 3.300A3 3 0 1 0 18 16z"/></svg></button><div class="short-watermark" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""><span>@${escapeShortText(seller)}</span></div>`;
+}
+
 function renderShorts() {
   const shortProducts = products.filter((product) => product.video && Number(product.videoDuration) > 0 && Number(product.videoDuration) <= 30);
   const shortServices = providers.filter((provider) => provider.video && Number(provider.videoDuration) > 0 && Number(provider.videoDuration) <= 30);
-  const productCards = shortProducts.map((product) => `<article class="short-card"><video src="${escapeShortText(product.video)}" poster="${escapeShortText(imageUrl(product.image, 640))}" controls muted playsinline preload="metadata"></video><div class="short-card-copy"><p class="short-card-source">${escapeShortText(product.seller || 'Local vendor')}</p><h3>${escapeShortText(product.name)}</h3><div class="short-card-action"><strong>${formatPrice(Number(product.price))}</strong><button class="add-button" data-short-add="${escapeShortText(product.id)}">Add to bag</button></div></div></article>`);
+  const productCards = shortProducts.map((product) => `<article class="short-card"><div class="short-media"><video src="${escapeShortText(product.video)}" poster="${escapeShortText(imageUrl(product.image, 640))}" controls muted playsinline preload="metadata"></video>${shortOverlay(product.seller || 'Local vendor', product.name)}</div><div class="short-card-copy"><p class="short-card-source">${escapeShortText(product.seller || 'Local vendor')}</p><h3>${escapeShortText(product.name)}</h3><div class="short-card-action"><strong>${formatPrice(Number(product.price))}</strong><button class="add-button" data-short-add="${escapeShortText(product.id)}">Add to bag</button></div></div></article>`);
   const serviceCards = shortServices.map((provider) => {
     const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
     const title = provider.title || provider.trade || provider.niche || 'Local service';
-    return `<article class="short-card"><video src="${escapeShortText(provider.video)}" poster="${escapeShortText(imageUrl(image, 640))}" controls muted playsinline preload="metadata"></video><div class="short-card-copy"><p class="short-card-source">${escapeShortText(provider.provider || provider.name || 'Service provider')}</p><h3>${escapeShortText(title)}</h3><div class="short-card-action"><strong>${formatPrice(Number(provider.price))}</strong><button class="book-button" data-short-book="${escapeShortText(provider.id)}">Book</button></div></div></article>`;
+    return `<article class="short-card"><div class="short-media"><video src="${escapeShortText(provider.video)}" poster="${escapeShortText(imageUrl(image, 640))}" controls muted playsinline preload="metadata"></video>${shortOverlay(provider.provider || provider.name || 'Service provider', title)}</div><div class="short-card-copy"><p class="short-card-source">${escapeShortText(provider.provider || provider.name || 'Service provider')}</p><h3>${escapeShortText(title)}</h3><div class="short-card-action"><strong>${formatPrice(Number(provider.price))}</strong><button class="book-button" data-short-book="${escapeShortText(provider.id)}">Book</button></div></div></article>`;
   });
   const cards = [...productCards, ...serviceCards];
   shortsGrid.innerHTML = cards.join('') || '<p class="shorts-empty">No product or service shorts yet.</p>';
@@ -205,6 +209,32 @@ function openProductDetail(productId) {
   document.body.style.overflow = 'hidden';
 }
 
+let rewardInfo = null;
+async function loadReward() {
+  rewardInfo = null;
+  if (sessionToken && currentUser && currentUser.role === 'customer') {
+    try { rewardInfo = await apiRequest('/api/me/referral'); } catch {}
+  }
+  renderCart();
+}
+function rewardFor(subtotal) {
+  if (!rewardInfo || subtotal < rewardInfo.minOrderNaira) return 0;
+  const units = (rewardInfo.welcomeAvailable ? 1 : 0) + rewardInfo.credits;
+  return Math.min(units * rewardInfo.rewardNaira, Math.floor(subtotal / 2 / rewardInfo.rewardNaira) * rewardInfo.rewardNaira);
+}
+function showCartReward(subtotal) {
+  let node = document.querySelector('#cart-reward');
+  if (!node) {
+    node = document.createElement('div');
+    node.id = 'cart-reward';
+    node.className = 'cart-reward';
+    document.querySelector('#cart-subtotal').parentElement.after(node);
+  }
+  const discount = rewardFor(subtotal);
+  node.hidden = !discount;
+  node.innerHTML = discount ? `<span>Referral reward</span><strong>−${formatPrice(discount)}</strong>` : '';
+}
+
 function renderCart() {
   const entries = Object.entries(cart).filter(([id, quantity]) => quantity > 0 && products.some((product) => product.id === id));
   const totalItems = entries.reduce((sum, [, quantity]) => sum + quantity, 0);
@@ -212,6 +242,7 @@ function renderCart() {
   document.querySelector('.cart-count').textContent = String(totalItems);
   document.querySelector('.drawer-item-count').textContent = `(${totalItems})`;
   document.querySelector('#cart-subtotal').textContent = formatPrice(subtotal);
+  showCartReward(subtotal);
   document.querySelector('#cart-items').innerHTML = entries.map(([id, quantity]) => {
     const product = products.find((item) => item.id === id);
     return `<article class="cart-item"><img src="${imageUrl(product.image, 160)}" alt=""><div><div class="cart-item-name">${product.name}</div><div class="cart-item-vendor">${product.seller}</div><div class="quantity-controls"><button data-quantity="${id}" data-change="-1" aria-label="Remove one ${product.name}">−</button><span>${quantity}</span><button data-quantity="${id}" data-change="1" aria-label="Add one ${product.name}">+</button></div></div><div class="cart-item-price">${formatPrice(product.price * quantity)}</div></article>`;
@@ -379,8 +410,10 @@ function openCheckout() {
     if (!product) return '';
     return `<div class="checkout-line"><span>${quantity} × ${product.name}</span><strong>${formatPrice(product.price * quantity)}</strong></div>`;
   }).join('') + '<div class="checkout-line delivery-charge"><span>Uyo delivery</span><strong>₦500</strong></div>';
-  const subtotal = lines.reduce((total, [id, quantity]) => total + (products.find((product) => product.id === id)?.price || 0) * quantity, 0) + 500;
-  document.querySelector('#checkout-total').textContent = formatPrice(subtotal);
+  const itemsTotal = lines.reduce((total, [id, quantity]) => total + (products.find((product) => product.id === id)?.price || 0) * quantity, 0);
+  const discount = rewardFor(itemsTotal);
+  if (discount) document.querySelector('#checkout-items').insertAdjacentHTML('beforeend', `<div class="checkout-line cart-reward-line"><span>Referral reward</span><strong>−${formatPrice(discount)}</strong></div>`);
+  document.querySelector('#checkout-total').textContent = formatPrice(itemsTotal + 500 - discount);
   closeCart();
   document.querySelector('#checkout-backdrop').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -405,6 +438,7 @@ function setPaymentStatus(state, reference, details = '') {
   document.querySelector('#payment-status-icon').textContent = labels[3];
   document.querySelector('#payment-reference').textContent = reference ? `Reference: ${reference}` : '';
   document.querySelector('#payment-status-backdrop').classList.add('open');
+  loadReward();
   document.body.style.overflow = 'hidden';
 }
 
@@ -536,7 +570,19 @@ document.querySelector('#detail-media').addEventListener('click', (event) => {
   document.querySelector('#detail-media .detail-image').src = thumb.dataset.photo;
   document.querySelectorAll('#detail-media .detail-thumb').forEach((item) => item.classList.toggle('active', item === thumb));
 });
+async function shareShort(title) {
+  let link = `${window.location.origin}/#products-shorts`;
+  if (sessionToken && currentUser) {
+    try { const data = await apiRequest('/api/me/referral'); link = data.link + '#products-shorts'; } catch {}
+  }
+  const text = `${title} on Unishop, Uyo`;
+  if (navigator.share) { navigator.share({ title: 'Unishop', text, url: link }).catch(() => {}); return; }
+  try { await navigator.clipboard.writeText(link); showToast('Link copied.'); } catch { showToast(link); }
+}
+
 shortsGrid.addEventListener('click', (event) => {
+  const shareNode = event.target.closest('[data-short-share]');
+  if (shareNode) { shareShort(shareNode.dataset.shortShare); return; }
   const addButton = event.target.closest('[data-short-add]');
   const bookButton = event.target.closest('[data-short-book]');
   if (addButton) addToCart(addButton.dataset.shortAdd);
@@ -663,6 +709,7 @@ authForm.addEventListener('submit', async (event) => {
     localStorage.setItem('unishop-last-username', credentials.username.trim().toLowerCase());
     localStorage.setItem('unishop-user', JSON.stringify(currentUser));
     closeAuth();
+    loadReward();
     showToast(`Welcome${registering ? ' to Unishop' : ' back'}, ${currentUser.name}.`);
     document.querySelector('.account-button span:last-child').textContent = currentUser.name.split(' ')[0];
     form.reset();
@@ -745,6 +792,8 @@ if ('serviceWorker' in navigator) window.addEventListener('load', () => navigato
       document.querySelector('#referral-whatsapp').href = `https://wa.me/?text=${encodeURIComponent(`Shop and book trusted services in Uyo on Unishop: ${data.link}`)}`;
       countNode.textContent = data.count ? `${data.count} ${data.count === 1 ? 'person has' : 'people have'} joined with your link.` : 'No one has joined with your link yet.';
       shareButton.hidden = !navigator.share;
+      const rewardNode = document.querySelector('#referral-reward');
+      if (rewardNode) rewardNode.textContent = data.credits ? `You have ${formatPrice(data.credits * data.rewardNaira)} off waiting for your next order.` : (data.welcomeAvailable ? `You have ${formatPrice(data.rewardNaira)} off your first order.` : '');
       backdropNode.classList.add('open');
     } catch (error) { showToast(error.message); }
   });
@@ -758,3 +807,4 @@ if ('serviceWorker' in navigator) window.addEventListener('load', () => navigato
   backdropNode.addEventListener('click', (event) => { if (event.target === backdropNode) close(); });
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
 })();
+loadReward();
