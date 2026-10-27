@@ -453,3 +453,6 @@ body.dark-theme .referral-link-row input { background: #1b2233; color: #f1f4fa; 
 
 .vendor-link{color:inherit;text-decoration:underline;text-underline-offset:2px;font-weight:600}
 .vendor-link:hover{color:#2f56c8}
+
+.payment-track{display:flex;justify-content:center;text-decoration:none;margin-bottom:8px}
+.payment-track[hidden]{display:none}
