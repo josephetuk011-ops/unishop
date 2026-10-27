@@ -224,6 +224,18 @@ function jobRows(jobs) {
     return `<tr><td><strong>${escapeHtml(job.reference)}</strong><br>${job.items.map((item) => escapeHtml(item.name)).join(', ')}</td><td>${escapeHtml(job.neighbourhood)}${deliveryDetails}</td><td><span class="status-pill ${escapeHtml(job.deliveryStatus || 'pending')}">${escapeHtml(job.deliveryStatus || 'available')}</span></td><td>${formatMoney(job.riderSettlementNaira || job.dispatchFeeNaira || 0)}</td><td>${action}</td></tr>`;
   });
 }
+function trackingPanel(orders) {
+  const goods = orders.filter((order) => order.type !== 'service' && order.paymentStatus === 'paid' && order.tracking).slice().reverse();
+  if (!goods.length) return panel('Track goods', '<div class="empty-state">Paid orders appear here with live tracking: collected from the seller, on dispatch, then at your doorstep.</div>');
+  const cards = goods.map((order) => {
+    const steps = order.tracking.steps.map((step) => `<li class="track-step${step.done ? ' done' : ''}"><span class="track-dot"></span><strong>${escapeHtml(step.label)}</strong><small>${step.done && step.at ? formatDate(step.at) : 'Pending'}</small></li>`).join('');
+    let action = '';
+    if (order.orderStatus === 'completed') action = '<p class="track-done">Received. Thank you for confirming.</p>';
+    else if (order.tracking.status === 'delivered') action = `<form class="receive-form" data-receive="${escapeHtml(order.reference)}"><p><strong>Your order is at your doorstep.</strong> Confirm you have it and rate your purchase.</p><div class="rate-stars" role="radiogroup" aria-label="Rate your purchase">${[5, 4, 3, 2, 1].map((n) => `<input type="radio" name="rating" id="r-${escapeHtml(order.reference)}-${n}" value="${n}"${n === 5 ? ' checked' : ''}><label for="r-${escapeHtml(order.reference)}-${n}" title="${n} out of 5">★</label>`).join('')}</div><label class="form-field">Comment (optional)<textarea name="comment" maxlength="500"></textarea></label><button class="primary-button" type="submit">Received, okay</button></form>`;
+    return `<article class="track-card"><header><strong>${escapeHtml(order.reference)}</strong><span>${order.items.map((item) => escapeHtml(item.name)).join(', ')}</span></header><ol class="track-steps">${steps}</ol>${action}</article>`;
+  }).join('');
+  return panel('Track goods', `<div class="track-list">${cards}</div>`);
+}
 function customerDashboard() {
   const bookings = dashboardData.bookings || [];
   const bookingRowsForCustomer = bookings.map((booking) => {
@@ -239,7 +251,7 @@ function customerDashboard() {
     return `<tr><td><strong>${escapeHtml(booking.provider || 'Service provider')}</strong></td><td>${escapeHtml(booking.service || 'Service')}</td><td>${escapeHtml(booking.time)}</td><td><span class="status-pill ${escapeHtml(booking.status)}">${escapeHtml(booking.status)}</span></td><td>${formatMoney(booking.amountNaira)}</td><td><div class="row-actions">${followups.join('')}</div></td></tr>`;
   });
   const reviewForm = '<form id="review-form" class="review-form" hidden><h3>Rate your completed service</h3><input type="hidden" name="listingId"><label class="form-field">Rating<select name="rating" required><option value="5">5 stars</option><option value="4">4 stars</option><option value="3">3 stars</option><option value="2">2 stars</option><option value="1">1 star</option></select></label><label class="form-field">Comment<textarea name="comment" required minlength="2" maxlength="500"></textarea></label><button class="primary-button" type="submit">Submit review</button></form>';
-  return `${header(`Welcome, ${dashboardData.user.name.split(' ')[0]}`, 'Your Unishop orders and service bookings.')}${panel('Your orders', table(['Order', 'Products', 'Total', 'Payment'], orderRows(dashboardData.orders || []), 'Your orders will appear here.'))}${panel('Your service bookings', table(['Provider', 'Service', 'Preferred time', 'Status', 'Price', 'Next step'], bookingRowsForCustomer, 'Your service bookings will appear here.'))}${reviewForm}`;
+  return `${header(`Welcome, ${dashboardData.user.name.split(' ')[0]}`, 'Your Unishop orders and service bookings.')}${trackingPanel(dashboardData.orders || [])}${panel('Your orders', table(['Order', 'Products', 'Total', 'Payment'], orderRows(dashboardData.orders || []), 'Your orders will appear here.'))}${panel('Your service bookings', table(['Provider', 'Service', 'Preferred time', 'Status', 'Price', 'Next step'], bookingRowsForCustomer, 'Your service bookings will appear here.'))}${reviewForm}`;
   const customerOrderRows = (dashboardData.orders || []).map((order) => {
     const confirmation = order.deliveryStatus === 'delivered' && order.settlementStatus !== 'available' ? `<button class="primary-button" data-confirm-delivery="${escapeHtml(order.reference)}">Confirm delivery</button>` : `<span class="status-pill ${escapeHtml(order.settlementStatus === 'available' ? 'released' : order.deliveryStatus || order.paymentStatus)}">${escapeHtml(order.settlementStatus === 'available' ? 'released' : order.deliveryStatus || order.paymentStatus)}</span>`;
     return `<tr><td><strong>${escapeHtml(order.reference)}</strong><br>${formatDate(order.createdAt)}</td><td>${order.items.map((item) => escapeHtml(item.name)).join(', ')}</td><td>${formatMoney(order.totalNaira)}</td><td><span class="status-pill ${escapeHtml(order.paymentStatus)}">${escapeHtml(order.paymentStatus)}</span><br>${confirmation}</td></tr>`;
@@ -321,6 +333,19 @@ document.addEventListener('click', (event) => {
   event.preventDefault();
   selectedView = link.dataset.view;
   renderDashboard();
+});
+
+document.addEventListener('submit', async (event) => {
+  const form = event.target.closest('[data-receive]');
+  if (!form) return;
+  event.preventDefault();
+  const button = form.querySelector('[type="submit"]');
+  button.disabled = true;
+  try {
+    await api(`/api/orders/${encodeURIComponent(form.dataset.receive)}/confirm-delivery`, { method: 'POST', body: JSON.stringify({ rating: Number(form.elements.rating.value), comment: form.elements.comment.value }) });
+    await refreshDashboard();
+    notify('Thanks. The vendor can now withdraw this payment.');
+  } catch (error) { notify(error.message); button.disabled = false; }
 });
 
 document.addEventListener('click', async (event) => {

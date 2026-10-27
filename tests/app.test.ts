@@ -2,6 +2,7 @@ import request from 'supertest';
 import app from '../src/app';
 
 process.env.NIN_VERIFICATION_ENABLED = 'true';
+process.env.DISPATCH_SIGNIN_ENABLED = 'true';
 let ninCounter = 0;
 const uniqueNin = () => String(30000000000 + (Date.now() % 1000000) * 1000 + (ninCounter++ % 1000));
 

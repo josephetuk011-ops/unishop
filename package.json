@@ -6,7 +6,7 @@
   "scripts": {
     "start": "ts-node src/app.ts",
     "test": "jest",
-    "test:payments": "node tests/payment-flow-smoke.cjs && node tests/payments-disabled-smoke.cjs && node tests/notifications-autopayout-smoke.cjs && node tests/referral-reward-smoke.cjs && node tests/stock-smoke.cjs"
+    "test:payments": "node tests/payment-flow-smoke.cjs && node tests/payments-disabled-smoke.cjs && node tests/notifications-autopayout-smoke.cjs && node tests/referral-reward-smoke.cjs && node tests/stock-smoke.cjs && node tests/tracking-smoke.cjs"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
