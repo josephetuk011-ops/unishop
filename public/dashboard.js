@@ -182,7 +182,7 @@ function profileForm() {
     </form></div></section>${ninPanel(user)}`;
 }
 function ninPanel(user) {
-  if (!['seller', 'provider'].includes(user.role)) return '';
+  if (!user.ninRequired) return '';
   const status = user.ninLast4 ? (user.ninStatus || 'pending') : 'none';
   const labels = { none: 'Not submitted', pending: 'Pending review', verified: 'Verified', failed: 'Not verified' };
   const colors = { none: '#8a6d1a', pending: '#8a6d1a', verified: '#1a7a3c', failed: '#b3261e' };
@@ -191,7 +191,7 @@ function ninPanel(user) {
   return `<div class="panel-gap"><section class="panel" id="nin-panel"><header class="panel-heading"><h3>Identity verification (NIN)</h3><b style="color:${colors[status]}">${labels[status]}</b></header><div class="panel-body"><p class="earnings-note">${escapeHtml(note)}</p>${form}</div></section></div>`;
 }
 function businessProfileComplete(user) {
-  return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && (!['seller', 'provider'].includes(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
+  return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && (!user.ninRequired || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
 function dispatchDashboard() {
   const { jobs, metrics, user } = dashboardData;

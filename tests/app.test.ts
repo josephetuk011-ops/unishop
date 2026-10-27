@@ -1,6 +1,7 @@
 import request from 'supertest';
 import app from '../src/app';
 
+process.env.NIN_VERIFICATION_ENABLED = 'true';
 let ninCounter = 0;
 const uniqueNin = () => String(30000000000 + (Date.now() % 1000000) * 1000 + (ninCounter++ % 1000));
 
@@ -45,6 +46,24 @@ describe('E-Marketplace Application', () => {
       .set('Access-Control-Request-Method', 'POST');
 
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('gives each account a referral link and links people who sign up with it', async () => {
+    const stamp = Date.now();
+    const mk = (username: string, extra: object = {}) => request(app).post('/api/auth/register').send({ name: 'Ref Person', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'customer', ...extra });
+    const owner = await mk(`refowner${stamp}`);
+    const auth = { Authorization: `Bearer ${owner.body.token}` };
+    expect((await request(app).get('/api/me/referral')).status).toBe(401);
+    const first = await request(app).get('/api/me/referral').set(auth);
+    expect(first.body.code).toMatch(/^[A-Z0-9]{8}$/);
+    expect(first.body.link).toContain(`/?ref=${first.body.code}`);
+    expect(first.body.count).toBe(0);
+    expect((await request(app).get('/api/me/referral').set(auth)).body.code).toBe(first.body.code);
+    expect((await mk(`refjoin${stamp}`, { ref: first.body.code.toLowerCase() })).status).toBe(201);
+    expect((await mk(`refbad${stamp}`, { ref: 'nope!' })).status).toBe(201);
+    const after = await request(app).get('/api/me/referral').set(auth);
+    expect(after.body.count).toBe(1);
+    expect(after.body.recent[0].name).toBe('Ref');
   });
 
   it('does not serve an admin dashboard from the storefront', async () => {
@@ -149,6 +168,17 @@ describe('E-Marketplace Application', () => {
     const login = await request(app).post('/api/auth/login').send({ username, password: 'customerpassword123' });
     expect(login.status).toBe(200);
     expect(login.body.user.role).toBe('customer');
+  });
+
+  it('has NIN collection switched off by default', async () => {
+    delete process.env.NIN_VERIFICATION_ENABLED;
+    try {
+      const username = `nooff${Date.now()}`;
+      const reg = await request(app).post('/api/auth/register').send({ name: 'No Nin', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Plain Shop' });
+      expect(reg.status).toBe(201);
+      expect(reg.body.user.ninRequired).toBe(false);
+      expect((await request(app).post('/api/profile/nin').set('Authorization', `Bearer ${reg.body.token}`).send({ nin: uniqueNin() })).status).toBe(404);
+    } finally { process.env.NIN_VERIFICATION_ENABLED = 'true'; }
   });
 
   it('does not ask for a NIN at signup; verifies it from the profile with the provider and never returns it', async () => {

@@ -68,4 +68,10 @@ Paystack has no escrow product. Customer payments land in your Paystack balance 
 
 ## NIN verification
 
-Sellers and service providers submit their NIN from Profile (not at signup). With `DOJAH_APP_ID` and `DOJAH_SECRET_KEY` set, the NIN is looked up with Dojah and the holder name is matched to the account name (verified or not verified). Without them it stays pending and an admin can approve it with `PATCH /api/admin/users/:id/nin-status`. Use `DOJAH_BASE_URL=https://sandbox.dojah.io` to test.
+NIN collection is switched off for now. Set `NIN_VERIFICATION_ENABLED=true` to turn it back on: sellers and service providers then submit their NIN from Profile (not at signup), and publishing needs it.
+
+When on, sellers and service providers submit their NIN from Profile (not at signup). With `DOJAH_APP_ID` and `DOJAH_SECRET_KEY` set, the NIN is looked up with Dojah and the holder name is matched to the account name (verified or not verified). Without them it stays pending and an admin can approve it with `PATCH /api/admin/users/:id/nin-status`. Use `DOJAH_BASE_URL=https://sandbox.dojah.io` to test.
+
+## Referral rewards
+
+Every account has a link (`/?ref=CODE`, built from `PUBLIC_URL` or the request host). A friend who signs up with it gets ₦100 off their first order. When that friend's first paid order has a subtotal of ₦1,000 or more, the referrer gets ₦100 off their next order. Discounts are applied server-side at checkout, capped at half the subtotal, and paid by Unishop: seller and rider settlements are unchanged.
