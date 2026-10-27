@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="/assets/icon-192.png">
+  <meta name="description" content="Download the Unishop app for Android, or install it from your browser.">
+  <title>Download the app | Unishop</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/install.css">
+  <script src="/download.js" defer></script>
+  <script src="/install.js" defer></script>
+</head>
+<body style="margin:0;background:#f7f6f1">
+  <main class="download-page">
+    <img class="download-logo" src="/assets/icon-192.png" alt="Unishop">
+    <h1>Get the Unishop app</h1>
+    <p>Shop local finds, book trusted services and track your orders from your home screen.</p>
+    <section class="download-card" id="android-card" hidden>
+      <h2>Android</h2>
+      <p>Download the app package and open it to install. If your phone asks, allow installs from your browser for this one file.</p>
+      <a class="download-btn" id="android-link" href="/downloads/unishop.apk" download>Download for Android</a>
+      <p class="download-note" id="android-size"></p>
+    </section>
+    <section class="download-card" id="install-card">
+      <h2>Install from your browser</h2>
+      <p id="install-text">Add Unishop to your home screen. It opens like an app and needs no download from a store.</p>
+      <button class="download-btn" id="install-button" type="button" hidden>Install Unishop</button>
+      <p class="download-note" id="ios-note" hidden>On iPhone: tap the Share button in Safari, then choose Add to Home Screen.</p>
+      <p class="download-note" id="manual-note" hidden>On Android Chrome: open the menu and choose Install app or Add to Home screen.</p>
+    </section>
+    <p class="download-note"><a href="/">Back to the marketplace</a></p>
+  </main>
+</body>
+</html>
