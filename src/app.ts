@@ -396,6 +396,16 @@ async function completePayment(reference: string, payment: any) {
         booking.settlementStatus = 'held';
       }
     }
+    if (!order.stockAdjusted) {
+      order.stockAdjusted = true;
+      (order.items || []).forEach((item: any) => {
+        const product = state.sellerProducts.find((entry) => entry.id === item.productId);
+        if (!product || product.stock === undefined || product.stock === null) return;
+        const entry = Array.isArray(product.sizes) ? product.sizes.find((row: any) => row.label === item.size) : undefined;
+        if (entry) entry.quantity = Math.max(0, entry.quantity - item.quantity);
+        product.stock = Array.isArray(product.sizes) && product.sizes.length ? product.sizes.reduce((sum: number, row: any) => sum + row.quantity, 0) : Math.max(0, product.stock - item.quantity);
+      });
+    }
     const buyer = state.users.find((member) => member.id === order.userId);
     if (buyer) {
       if (order.rewardDiscountNaira > 0) {
@@ -901,7 +911,9 @@ app.get('/api/products', (_request, response) => response.json([
   ...catalog,
   ...state.sellerProducts.filter((product) => !isAccountSuspended(product.userId)).map((product) => {
     const brandProfile = publicBusinessProfile(product.userId);
-    return { ...product, seller: brandProfile?.businessName || product.seller, brandProfile };
+    const ratings = state.reviews.filter((review) => review.listingId === product.id);
+    const rating = ratings.length ? (ratings.reduce((sum, review) => sum + review.rating, 0) / ratings.length).toFixed(1) : null;
+    return { ...product, seller: brandProfile?.businessName || product.seller, brandProfile, rating, reviews: ratings.length };
   })
 ]));
 app.get('/api/services/niches', (_request, response) => response.json(serviceNiches.map((name) => ({ name, image: nicheImages[name] }))));
@@ -1056,11 +1068,35 @@ app.post('/api/provider/listings', (request: Request, response: Response) => {
   response.status(201).json({ listing });
 });
 
+function parseStock(body: any): { stock?: number; sizes?: { label: string; quantity: number }[] } {
+  const { quantity, sizes } = body || {};
+  const count = (value: any) => { const n = Number(value); if (!Number.isInteger(n) || n < 0 || n > 100000) fail(400, 'Quantities must be whole numbers from 0 to 100,000.'); return n; };
+  if (sizes !== undefined && sizes !== null && !(Array.isArray(sizes) && sizes.length === 0)) {
+    if (!Array.isArray(sizes) || sizes.length > 20) fail(400, 'Add up to 20 sizes.');
+    const cleaned = sizes.map((entry: any) => {
+      const label = typeof entry?.label === 'string' ? entry.label.trim() : '';
+      if (!label || label.length > 20) fail(400, 'Each size needs a name of up to 20 characters.');
+      return { label, quantity: count(entry.quantity) };
+    });
+    if (new Set(cleaned.map((entry) => entry.label.toLowerCase())).size !== cleaned.length) fail(400, 'Each size can only be listed once.');
+    return { sizes: cleaned, stock: cleaned.reduce((sum, entry) => sum + entry.quantity, 0) };
+  }
+  if (quantity === undefined || quantity === null || quantity === '') return {};
+  return { stock: count(quantity) };
+}
+
+function availableFor(product: any, size?: string) {
+  if (product.stock === undefined || product.stock === null) return Infinity;
+  if (Array.isArray(product.sizes) && product.sizes.length) return product.sizes.find((entry: any) => entry.label === size)?.quantity ?? 0;
+  return product.stock;
+}
+
 app.post('/api/seller/products', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (user.role !== 'seller') fail(403, 'Use a seller account to add a product.');
   if (!hasCompleteBusinessProfile(user)) fail(409, 'Complete your public business profile before publishing a product.');
   const { name, category, description, price, image, images, video, videoDuration } = request.body || {};
+  const stockFields = parseStock(request.body);
   if (typeof name !== 'string' || name.trim().length < 3 || name.length > 100) fail(400, 'Enter a product name.');
   if (!['Home', 'Fashion', 'Beauty', 'Tech', 'Food'].includes(category)) fail(400, 'Choose a valid product category.');
   if (typeof description !== 'string' || description.trim().length < 5) fail(400, 'Add a short product description.');
@@ -1070,10 +1106,36 @@ app.post('/api/seller/products', (request: Request, response: Response) => {
   if (!Array.isArray(productImages) || productImages.length < 1 || productImages.length > 3 || productImages.some((item) => typeof item !== 'string' || !uploadPath.test(item))) fail(400, 'Upload 1 to 3 product photos first.');
   if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.(mp4|webm)$/.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
-  const product = { id: `seller-${randomBytes(10).toString('hex')}`, userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), image: productImages[0], images: productImages, video, videoDuration: video === undefined ? undefined : Number(videoDuration), rating: null, reviews: 0, createdAt: new Date().toISOString() };
+  const product = { id: `seller-${randomBytes(10).toString('hex')}`, userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), ...stockFields, image: productImages[0], images: productImages, video, videoDuration: video === undefined ? undefined : Number(videoDuration), rating: null, reviews: 0, createdAt: new Date().toISOString() };
   state.sellerProducts.push(product);
   saveState();
   response.status(201).json({ product });
+});
+
+app.patch('/api/seller/products/:id/stock', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  const product = state.sellerProducts.find((item) => item.id === request.params.id && item.userId === user.id);
+  if (!product) fail(404, 'Product not found.');
+  const fields = parseStock(request.body);
+  if (fields.stock === undefined) fail(400, 'Enter the quantity available.');
+  product.stock = fields.stock;
+  if (fields.sizes) product.sizes = fields.sizes; else delete product.sizes;
+  saveState();
+  response.json({ product });
+});
+
+app.post('/api/products/:id/reviews', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  const product = state.sellerProducts.find((item) => item.id === request.params.id);
+  if (!product) fail(404, 'Product not found.');
+  if (!state.orders.some((order) => order.userId === user.id && order.paymentStatus === 'paid' && order.items.some((item: any) => item.productId === product.id))) fail(403, 'Buy this product before rating it.');
+  if (state.reviews.some((review) => review.userId === user.id && review.listingId === product.id)) fail(409, 'You have already rated this product.');
+  const rating = Number(request.body?.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) fail(400, 'Choose a rating from 1 to 5.');
+  const review = { id: randomBytes(10).toString('hex'), listingId: product.id, userId: user.id, reviewer: user.name, rating, comment: typeof request.body?.comment === 'string' ? request.body.comment.trim().slice(0, 500) : '', createdAt: new Date().toISOString() };
+  state.reviews.push(review);
+  saveState();
+  response.status(201).json({ review });
 });
 
 app.post('/api/orders/:reference/confirm-delivery', (request: Request, response: Response) => {
@@ -1417,10 +1479,21 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
       const product = catalog.find((entry) => entry.id === item.id) || state.sellerProducts.find((entry) => entry.id === item.id && !isAccountSuspended(entry.userId));
       const quantity = Number(item.quantity);
       if (!product || !Number.isInteger(quantity) || quantity < 1 || quantity > 10) fail(400, 'Your bag contains an invalid product or quantity.');
-      return { product, quantity };
+      const size = typeof item.size === 'string' && item.size.trim() ? item.size.trim() : undefined;
+      if (Array.isArray(product.sizes) && product.sizes.length && !product.sizes.some((entry: any) => entry.label === size)) fail(400, `Choose a size for ${product.name}.`);
+      return { product, quantity, size: Array.isArray(product.sizes) && product.sizes.length ? size : undefined };
     });
-    orderItems = serverItems.map(({ product, quantity }) => ({
+    const requested = new Map<string, number>();
+    serverItems.forEach(({ product, quantity, size }) => {
+      const key = `${product.id}::${size || ''}`;
+      const total = (requested.get(key) || 0) + quantity;
+      requested.set(key, total);
+      const available = availableFor(product, size);
+      if (total > available) fail(409, available <= 0 ? `${product.name}${size ? ` (${size})` : ''} is sold out.` : `Only ${available} of ${product.name}${size ? ` (${size})` : ''} left.`);
+    });
+    orderItems = serverItems.map(({ product, quantity, size }) => ({
       productId: product.id,
+      size,
       name: product.name,
       seller: product.seller || product.businessName,
       sellerUserId: product.userId,

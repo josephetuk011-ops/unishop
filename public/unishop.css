@@ -438,3 +438,15 @@ body.dark-theme .referral-link-row input { background: #1b2233; color: #f1f4fa; 
 .cart-reward { display: flex; justify-content: space-between; margin-top: 8px; color: #0b7a3b; font-size: 14px; }
 .cart-reward[hidden] { display: none; }
 .cart-reward-line strong, .cart-reward-line span { color: #0b7a3b; }
+
+.stock-note { display: inline-block; margin: 0 6px; color: #b45309; font-size: 11px; font-weight: 700; }
+.stock-note.sold-out { color: #b91c1c; }
+.add-button:disabled, #detail-add-to-bag:disabled { opacity: .45; cursor: not-allowed; }
+.size-picker { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.size-chip { display: grid; min-width: 48px; padding: 6px 10px; border: 1px solid #cdd6ea; border-radius: 6px; background: #fff; color: #172957; font-weight: 700; cursor: pointer; }
+.size-chip small { font-size: 10px; font-weight: 400; color: #697694; }
+.size-chip.active { border-color: #214bc4; background: #214bc4; color: #fff; }
+.size-chip.active small { color: #dbe4ff; }
+.size-chip:disabled { opacity: .4; cursor: not-allowed; }
+.rate-row { display: flex; align-items: center; gap: 4px; margin: 8px 0; font-size: 13px; color: #697694; }
+.rate-star { border: 0; background: none; color: #d4a017; font-size: 20px; cursor: pointer; padding: 0 2px; }

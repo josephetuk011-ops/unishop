@@ -64,6 +64,25 @@ function shortOverlay(seller, title) {
   return `<button class="short-share" type="button" data-short-share="${escapeShortText(title)}" aria-label="Share this short"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M18 16a3 3 0 0 0-2.2 1l-6.6-3.3a3 3 0 0 0 0-1.4L15.800 8a3 3 0 1 0-.8-1.800L8.400 9.500a3 3 0 1 0 0 5l6.600 3.300A3 3 0 1 0 18 16z"/></svg></button><div class="short-watermark" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""><span>@${escapeShortText(seller)}</span></div>`;
 }
 
+function stockBadge(product) {
+  if (product.stock === undefined || product.stock === null) return '';
+  if (product.stock === 0) return '<span class="stock-note sold-out">Sold out</span>';
+  return product.stock <= 5 ? `<span class="stock-note">${product.stock} left</span>` : '';
+}
+
+let detailSize;
+function renderDetailExtras(product) {
+  const node = document.querySelector('#detail-extras');
+  if (!node) return;
+  detailSize = undefined;
+  const parts = [];
+  if (product.stock !== undefined && product.stock !== null) parts.push(product.stock === 0 ? '<p class="stock-note sold-out">Sold out</p>' : `<p class="stock-note">${product.stock} available</p>`);
+  if (hasSizes(product)) parts.push(`<div class="size-picker" role="group" aria-label="Choose a size">${product.sizes.map((row) => `<button type="button" class="size-chip" data-size="${escapeShortText(row.label)}"${row.quantity === 0 ? ' disabled' : ''}>${escapeShortText(row.label)}<small>${row.quantity === 0 ? 'out' : row.quantity + ' left'}</small></button>`).join('')}</div>`);
+  if (String(product.id).startsWith('seller-') && sessionToken) parts.push(`<div class="rate-row" data-rate-for="${escapeShortText(product.id)}"><span>Bought it? Rate it:</span>${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="rate-star" data-rating="${n}" aria-label="${n} out of 5">★</button>`).join('')}</div>`);
+  node.innerHTML = parts.join('');
+  document.querySelector('#detail-add-to-bag').disabled = product.stock === 0;
+}
+
 function renderShorts() {
   const shortProducts = products.filter((product) => product.video && Number(product.videoDuration) > 0 && Number(product.videoDuration) <= 30);
   const shortServices = providers.filter((provider) => provider.video && Number(provider.videoDuration) > 0 && Number(provider.videoDuration) <= 30);
@@ -124,7 +143,7 @@ function renderProducts() {
   const goodsMarkup = marketMode === 'services' ? [] : goods.map((product, index) => `
     <article class="product-card goods-card" style="animation-delay:${index * 35}ms">
       <div class="product-image-wrap"><img class="product-image" src="${imageUrl(product.image)}" alt="${product.name}" loading="lazy"><button class="product-open-image" data-product-detail="${product.id}" aria-label="View ${product.name} details"></button><span class="product-badge ${product.category === 'Beauty' ? 'coral' : ''}">${product.badge || 'UYO SHOP'}</span>${product.video ? '<span class="product-video-badge">▶ VIDEO</span>' : ''}<button class="save-button ${saved.has(product.id) ? 'saved' : ''}" data-save="${product.id}" aria-label="${saved.has(product.id) ? 'Remove from' : 'Save to'} favourites">${saved.has(product.id) ? '♥' : '♡'}</button></div>
-      <div class="product-details"><div class="product-vendor">${product.seller}</div><h3 class="product-name"><button class="product-title-open" data-product-detail="${product.id}">${product.name}</button></h3><div class="product-bottom"><span class="product-price">${formatPrice(product.price)}</span>${product.rating ? `<span class="product-rating"><b>★</b> ${product.rating} <span>(${product.reviews || 0})</span></span>` : '<span class="product-rating">New in Uyo</span>'}<button class="add-button" data-add="${product.id}" aria-label="Add ${product.name} to bag">+</button></div></div>
+      <div class="product-details"><div class="product-vendor">${product.seller}</div><h3 class="product-name"><button class="product-title-open" data-product-detail="${product.id}">${product.name}</button></h3><div class="product-bottom"><span class="product-price">${formatPrice(product.price)}</span>${product.rating ? `<span class="product-rating"><b>★</b> ${Number(product.rating).toFixed(1)}/5 <span>(${product.reviews || 0})</span></span>` : '<span class="product-rating">★ Not rated yet</span>'}${stockBadge(product)}<button class="add-button" data-add="${product.id}" aria-label="Add ${product.name} to bag"${product.stock === 0 ? ' disabled' : ''}>+</button></div></div>
     </article>`);
   const services = providers.filter((provider) => {
     const matchesNiche = activeNiche === 'All' || provider.niche === activeNiche || provider.category === activeNiche || provider.trade === activeNiche;
@@ -174,7 +193,7 @@ function openProductDetail(productId) {
   media.innerHTML = `<img class="detail-image" src="${imageUrl(gallery[0], 1200)}" alt="${product.name}">${gallery.length > 1 ? `<div class="detail-thumbs">${gallery.map((photo, index) => `<button type="button" class="detail-thumb${index === 0 ? ' active' : ''}" data-photo="${escapeShortText(imageUrl(photo, 1200))}" aria-label="Show photo ${index + 1} of ${gallery.length}"><img src="${escapeShortText(imageUrl(photo, 160))}" alt=""></button>`).join('')}</div>` : ''}${product.video ? `<video class="detail-video" src="${imageUrl(product.video)}" controls playsinline preload="metadata" aria-label="Vendor or brand video showing ${product.name}"></video>` : ''}`;
   document.querySelector('#detail-category').textContent = `${product.category} · UYO MARKETPLACE`;
   document.querySelector('#product-detail-title').textContent = product.name;
-  document.querySelector('#detail-rating').innerHTML = product.rating ? `<strong>★ ${product.rating}</strong> <span>${product.reviews || 0} customer ratings</span>` : '<span>New listing · No ratings yet</span>';
+  document.querySelector('#detail-rating').innerHTML = product.rating ? `<strong>★ ${Number(product.rating).toFixed(1)}/5</strong> <span>${product.reviews || 0} customer ratings</span>` : '<span>New listing · No ratings yet</span>';
   document.querySelector('#detail-seller').textContent = `From ${product.seller}`;
   const brandProfile = product.brandProfile;
   const brandTrigger = document.querySelector('#detail-brand-trigger');
@@ -205,6 +224,7 @@ function openProductDetail(productId) {
   document.querySelector('#detail-price').textContent = formatPrice(product.price);
   document.querySelector('#detail-video-note').textContent = product.video ? 'Vendor- or brand-uploaded product video' : 'No product video uploaded by this vendor or brand.';
   document.querySelector('#detail-add-to-bag').dataset.add = product.id;
+  renderDetailExtras(product);
   document.querySelector('#product-detail-backdrop').classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -236,16 +256,17 @@ function showCartReward(subtotal) {
 }
 
 function renderCart() {
-  const entries = Object.entries(cart).filter(([id, quantity]) => quantity > 0 && products.some((product) => product.id === id));
+  const entries = Object.entries(cart).filter(([key, quantity]) => quantity > 0 && products.some((product) => product.id === cartParts(key).id));
   const totalItems = entries.reduce((sum, [, quantity]) => sum + quantity, 0);
-  const subtotal = entries.reduce((sum, [id, quantity]) => sum + products.find((product) => product.id === id).price * quantity, 0);
+  const subtotal = entries.reduce((sum, [key, quantity]) => sum + products.find((product) => product.id === cartParts(key).id).price * quantity, 0);
   document.querySelector('.cart-count').textContent = String(totalItems);
   document.querySelector('.drawer-item-count').textContent = `(${totalItems})`;
   document.querySelector('#cart-subtotal').textContent = formatPrice(subtotal);
   showCartReward(subtotal);
   document.querySelector('#cart-items').innerHTML = entries.map(([id, quantity]) => {
-    const product = products.find((item) => item.id === id);
-    return `<article class="cart-item"><img src="${imageUrl(product.image, 160)}" alt=""><div><div class="cart-item-name">${product.name}</div><div class="cart-item-vendor">${product.seller}</div><div class="quantity-controls"><button data-quantity="${id}" data-change="-1" aria-label="Remove one ${product.name}">−</button><span>${quantity}</span><button data-quantity="${id}" data-change="1" aria-label="Add one ${product.name}">+</button></div></div><div class="cart-item-price">${formatPrice(product.price * quantity)}</div></article>`;
+    const parts = cartParts(id);
+    const product = products.find((item) => item.id === parts.id);
+    return `<article class="cart-item"><img src="${imageUrl(product.image, 160)}" alt=""><div><div class="cart-item-name">${product.name}${parts.size ? ` · ${escapeShortText(parts.size)}` : ''}</div><div class="cart-item-vendor">${product.seller}</div><div class="quantity-controls"><button data-quantity="${id}" data-change="-1" aria-label="Remove one ${product.name}">−</button><span>${quantity}</span><button data-quantity="${id}" data-change="1" aria-label="Add one ${product.name}">+</button></div></div><div class="cart-item-price">${formatPrice(product.price * quantity)}</div></article>`;
   }).join('');
   document.querySelector('#cart-empty').classList.toggle('visible', totalItems === 0);
   document.querySelector('#cart-summary').style.display = totalItems ? '' : 'none';
@@ -267,8 +288,21 @@ function closeCart() {
   document.body.style.overflow = '';
 }
 
-function addToCart(id) {
-  cart[id] = (cart[id] || 0) + 1;
+const cartParts = (key) => { const [id, size] = String(key).split('::'); return { id, size: size || undefined }; };
+const hasSizes = (product) => Array.isArray(product?.sizes) && product.sizes.length > 0;
+function availableOf(product, size) {
+  if (product.stock === undefined || product.stock === null) return Infinity;
+  if (hasSizes(product)) return product.sizes.find((row) => row.label === size)?.quantity ?? 0;
+  return product.stock;
+}
+function addToCart(id, size) {
+  const product = products.find((item) => item.id === id);
+  if (product && hasSizes(product) && !size) { openProductDetail(id); showToast('Choose a size first.'); return; }
+  const key = size ? `${id}::${size}` : id;
+  const available = product ? availableOf(product, size) : Infinity;
+  if (available <= 0) { showToast('Sold out.'); return; }
+  if ((cart[key] || 0) + 1 > available) { showToast(`Only ${available} left.`); return; }
+  cart[key] = (cart[key] || 0) + 1;
   renderCart();
   showToast('Added to your bag');
 }
@@ -405,12 +439,13 @@ function apiRequest(url, options = {}) {
 function openCheckout() {
   const lines = Object.entries(cart).filter(([, quantity]) => quantity > 0);
   if (!lines.length) return;
-  document.querySelector('#checkout-items').innerHTML = lines.map(([id, quantity]) => {
-    const product = products.find((item) => item.id === id);
+  document.querySelector('#checkout-items').innerHTML = lines.map(([key, quantity]) => {
+    const parts = cartParts(key);
+    const product = products.find((item) => item.id === parts.id);
     if (!product) return '';
-    return `<div class="checkout-line"><span>${quantity} × ${product.name}</span><strong>${formatPrice(product.price * quantity)}</strong></div>`;
+    return `<div class="checkout-line"><span>${quantity} × ${product.name}${parts.size ? ` (${escapeShortText(parts.size)})` : ''}</span><strong>${formatPrice(product.price * quantity)}</strong></div>`;
   }).join('') + '<div class="checkout-line delivery-charge"><span>Uyo delivery</span><strong>₦500</strong></div>';
-  const itemsTotal = lines.reduce((total, [id, quantity]) => total + (products.find((product) => product.id === id)?.price || 0) * quantity, 0);
+  const itemsTotal = lines.reduce((total, [key, quantity]) => total + (products.find((product) => product.id === cartParts(key).id)?.price || 0) * quantity, 0);
   const discount = rewardFor(itemsTotal);
   if (discount) document.querySelector('#checkout-items').insertAdjacentHTML('beforeend', `<div class="checkout-line cart-reward-line"><span>Referral reward</span><strong>−${formatPrice(discount)}</strong></div>`);
   document.querySelector('#checkout-total').textContent = formatPrice(itemsTotal + 500 - discount);
@@ -439,6 +474,7 @@ function setPaymentStatus(state, reference, details = '') {
   document.querySelector('#payment-reference').textContent = reference ? `Reference: ${reference}` : '';
   document.querySelector('#payment-status-backdrop').classList.add('open');
   loadReward();
+  loadProducts();
   document.body.style.overflow = 'hidden';
 }
 
@@ -461,7 +497,7 @@ document.querySelector('#checkout-form').addEventListener('submit', async (event
         email: form.elements.email.value,
         customer: { name: form.elements.name.value, phone: form.elements.phone.value },
         delivery: { address: form.elements.address.value, neighbourhood: form.elements.neighbourhood.value },
-        items: Object.entries(cart).map(([id, quantity]) => ({ id, quantity }))
+        items: Object.entries(cart).map(([key, quantity]) => ({ id: cartParts(key).id, size: cartParts(key).size, quantity }))
       })
     });
     window.location.assign(result.authorizationUrl);
@@ -620,8 +656,27 @@ document.querySelector('#product-detail-backdrop').addEventListener('click', (ev
   if (event.target.id === 'product-detail-backdrop') closeProductDetail();
 });
 document.querySelector('#detail-add-to-bag').addEventListener('click', (event) => {
-  addToCart(event.currentTarget.dataset.add);
+  const id = event.currentTarget.dataset.add;
+  const product = products.find((item) => item.id === id);
+  if (hasSizes(product) && !detailSize) { showToast('Choose a size first.'); return; }
+  addToCart(id, detailSize);
   closeProductDetail();
+});
+document.querySelector('#detail-extras')?.addEventListener('click', async (event) => {
+  const chip = event.target.closest('[data-size]');
+  if (chip && !chip.disabled) {
+    detailSize = chip.dataset.size;
+    document.querySelectorAll('.size-chip').forEach((node) => node.classList.toggle('active', node === chip));
+    return;
+  }
+  const star = event.target.closest('[data-rating]');
+  if (star) {
+    try {
+      await apiRequest(`/api/products/${star.closest('[data-rate-for]').dataset.rateFor}/reviews`, { method: 'POST', body: JSON.stringify({ rating: Number(star.dataset.rating) }) });
+      showToast('Thanks for rating.');
+      loadProducts();
+    } catch (error) { showToast(error.message); }
+  }
 });
 document.querySelector('.booking-close').addEventListener('click', () => {
   document.querySelector('#modal-backdrop').classList.remove('open');
@@ -752,17 +807,22 @@ fetch('/api/services').then((response) => response.ok ? response.json() : []).th
     renderVisionTicker();
   }
 }).catch(() => {});
-fetch('/api/products').then((response) => response.ok ? response.json() : []).then((data) => {
-  if (Array.isArray(data) && data.length) {
-    const known = new Set(products.map((product) => product.id));
-    vendorProducts.splice(0, vendorProducts.length, ...data.filter((product) => !known.has(product.id)));
-    data.forEach((product) => { if (!known.has(product.id)) products.push({ ...product, badge: 'UYO SHOP' }); });
-    renderProducts();
-    renderShorts();
-    renderCart();
-    renderVisionTicker();
-  }
-}).catch(() => {});
+function loadProducts() {
+  return fetch('/api/products').then((response) => response.ok ? response.json() : []).then((data) => {
+    if (Array.isArray(data) && data.length) {
+      const known = new Set(catalogIds);
+      vendorProducts.forEach((old) => { const index = products.findIndex((product) => product.id === old.id); if (index >= 0) products.splice(index, 1); });
+      vendorProducts.splice(0, vendorProducts.length, ...data.filter((product) => !known.has(product.id)));
+      data.forEach((product) => { if (!known.has(product.id)) products.push({ ...product, badge: 'UYO SHOP' }); });
+      renderProducts();
+      renderShorts();
+      renderCart();
+      renderVisionTicker();
+    }
+  }).catch(() => {});
+}
+const catalogIds = products.map((product) => product.id);
+loadProducts();
 verifyPaymentReturn();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 
