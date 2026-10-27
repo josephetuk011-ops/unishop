@@ -17,6 +17,7 @@ import { z } from 'zod';
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 const scrypt = promisify(scryptCallback);
 const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
@@ -386,14 +387,21 @@ app.use(helmet({
   noSniff: true,
   xssFilter: true
 }));
-app.use(cors({
-  origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
-    if (!origin || corporateFrontendDomains.includes(origin)) return callback(null, true);
-    return callback(new Error('Origin not allowed by CORS policy.'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+app.use(cors((request: Request, callback: (error: Error | null, options?: cors.CorsOptions) => void) => {
+  const origin = request.get('origin');
+  // Same-origin browser requests (the storefront calling its own API) send an Origin header equal to the request host.
+  let sameOrigin = false;
+  if (origin) {
+    try { sameOrigin = new URL(origin).host === request.get('host'); } catch { sameOrigin = false; }
+  }
+  const allowed = !origin || sameOrigin || corporateFrontendDomains.includes(origin);
+  if (!allowed) return callback(new Error('Origin not allowed by CORS policy.'));
+  return callback(null, {
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  });
 }));
 app.use(cookieParser());
 app.use(express.json({
