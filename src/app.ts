@@ -1121,6 +1121,23 @@ app.post('/api/auth/login', asyncRoute(async (request: Request, response: Respon
   response.json({ token: accessToken, refreshToken, user: cleanUser(user) });
 }));
 
+app.post('/api/auth/logout', (_request: Request, response: Response) => {
+  response.clearCookie(accessTokenCookieName);
+  response.clearCookie(refreshTokenCookieName);
+  response.json({ ok: true });
+});
+app.post('/api/auth/refresh', (request: Request, response: Response) => {
+  const supplied = request.cookies?.[refreshTokenCookieName] || request.body?.refreshToken;
+  if (typeof supplied !== 'string' || !supplied) fail(401, 'Sign in to continue.');
+  let payload: { sub: string; type?: string };
+  try { payload = jwt.verify(supplied, jwtSecret) as { sub: string; type?: string }; } catch { fail(401, 'Your session has expired. Sign in again.'); }
+  const user = state.users.find((member) => member.id === payload.sub);
+  if (payload.type !== 'refresh' || !user || user.role === 'admin' || user.suspendedAt) fail(401, 'Your session has expired. Sign in again.');
+  const accessToken = tokenFor(user);
+  setAuthCookies(response, accessToken);
+  response.json({ token: accessToken, user: cleanUser(user) });
+});
+
 app.patch('/api/profile', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (!['seller', 'provider', 'dispatch'].includes(user.role)) fail(403, 'Business profiles are only available to sellers, service providers and dispatch riders.');

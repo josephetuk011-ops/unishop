@@ -1,4 +1,4 @@
-const token = localStorage.getItem('unishop-token') || '';
+let token = localStorage.getItem('unishop-token') || '';
 const workspace = document.querySelector('#workspace-content');
 const roleLabels = { provider: 'Service provider', seller: 'Vendors and Brands', dispatch: 'Dispatch rider', customer: 'Customer', admin: 'Admin' };
 const roleNiches = ['Barbing', 'Cleaning', 'Cooking', 'Hair dressing', 'Decorating', 'Grass clearing', 'Mechanic', 'Electrician', 'Plumber', 'Photographer', 'Makeup', 'Fashion designing', 'Manicure and pedicure', 'Therapist'];
@@ -22,10 +22,36 @@ function notify(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => element.classList.remove('visible'), 3200);
 }
-async function api(url, options = {}) {
+async function refreshSession() {
+  try {
+    const response = await fetch('/api/auth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    if (!response.ok) return false;
+    const result = await response.json();
+    token = result.token;
+    localStorage.setItem('unishop-token', token);
+    localStorage.setItem('unishop-user', JSON.stringify(result.user));
+    return true;
+  } catch {
+    return false;
+  }
+}
+function endSession() {
+  fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  localStorage.removeItem('unishop-token');
+  localStorage.removeItem('unishop-user');
+  window.location.assign('/?signin=1');
+}
+async function api(url, options = {}, retried = false) {
   const headers = { Authorization: `Bearer ${token}`, ...(options.headers || {}) };
   if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const response = await fetch(url, { ...options, headers });
+  if (response.status === 401 && !retried && url !== '/api/auth/refresh') {
+    // The access token only lasts 15 minutes; renew it from the refresh cookie and retry once.
+    if (await refreshSession()) return api(url, options, true);
+    const error = new Error('Your session has expired. Sign in again.');
+    error.sessionExpired = true;
+    throw error;
+  }
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'The request could not be completed.');
   return result;
@@ -250,46 +276,6 @@ function customerDashboard() {
   });
   return `${header(`Welcome, ${dashboardData.user.name.split(' ')[0]}`, 'Your Unishop orders and service bookings.')}${panel('Your orders', table(['Order', 'Products', 'Total', 'Payment and delivery'], customerOrderRows, 'Your orders will appear here.'))}${panel('Your service bookings', table(['Provider', 'Service', 'Preferred time', 'Status', 'Price', 'Next step'], bookingRowsForCustomer, 'Your service bookings will appear here.'))}${reviewForm}`;
 }
-function previewDashboardData() {
-  return {
-    role: 'admin',
-    user: { name: 'Ada Okon', email: 'ada@unishop.ng', role: 'admin', businessName: 'Marketplace admin', niche: 'Operations' },
-    metrics: {
-      totalUsers: 268,
-      totalOrders: 84,
-      totalBookings: 36,
-      totalRevenue: 4125000,
-      paidOrders: 59,
-      pendingPayments: 12,
-      totalListings: 182,
-      availablePayouts: 26
-    },
-    breakdown: {
-      roles: { customer: 136, seller: 42, provider: 31, dispatch: 20, admin: 3 },
-      orders: { paid: 59, pending: 12, processing: 8, failed: 5 },
-      bookings: { confirmed: 18, requested: 9, completed: 7, pending: 2 },
-      catalog: { products: 28, services: 54, reviews: 82, payouts: 18 }
-    },
-    users: [
-      { name: 'Ada Okon', role: 'admin', email: 'ada@unishop.ng' },
-      { name: 'Mfon Bassey', role: 'seller', email: 'mfon@unishop.ng' },
-      { name: 'Daniel Enang', role: 'provider', email: 'daniel@unishop.ng' },
-      { name: 'Udo Effiong', role: 'dispatch', email: 'udo@unishop.ng' },
-      { name: 'Sarah Akpan', role: 'customer', email: 'sarah@unishop.ng' }
-    ],
-    orders: [
-      { reference: 'UYO-2048', totalNaira: 28600, paymentStatus: 'paid', createdAt: '2026-10-01T09:00:00.000Z' },
-      { reference: 'UYO-2041', totalNaira: 14900, paymentStatus: 'pending', createdAt: '2026-10-02T12:30:00.000Z' },
-      { reference: 'UYO-2038', totalNaira: 38250, paymentStatus: 'paid', createdAt: '2026-10-03T07:10:00.000Z' },
-      { reference: 'UYO-2029', totalNaira: 21600, paymentStatus: 'processing', createdAt: '2026-10-04T08:40:00.000Z' }
-    ],
-    bookings: [
-      { provider: 'Nneoma Hair Studio', service: 'Hair styling', userId: 'Sarah Akpan', status: 'confirmed', amountNaira: 15000 },
-      { provider: 'CleanEase Uyo', service: 'Cleaning', userId: 'Grace Udo', status: 'pending', amountNaira: 12000 },
-      { provider: 'Aqua Fix', service: 'Plumbing', userId: 'Victor Etim', status: 'completed', amountNaira: 23500 }
-    ]
-  };
-}
 function renderDashboard() {
   document.querySelector('#workspace-role').textContent = roleLabels[dashboardData.role] || 'Marketplace';
   document.querySelector('#profile-name').textContent = dashboardData.user.name;
@@ -320,14 +306,9 @@ async function refreshDashboard() {
     dashboardData = await api('/api/dashboard');
     if (['seller', 'provider', 'dispatch'].includes(dashboardData.role) && !businessProfileComplete(dashboardData.user)) selectedView = 'profile';
   } catch (error) {
-    dashboardData = previewDashboardData();
-    const toast = document.querySelector('#workspace-toast');
-    if (toast) {
-      toast.textContent = 'Preview mode: showing a live admin layout demo.';
-      toast.classList.add('visible');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => toast.classList.remove('visible'), 3200);
-    }
+    if (error.sessionExpired || !token) return endSession();
+    workspace.innerHTML = `<div class="empty-state">We could not load your account. ${escapeHtml(error.message)} <button class="secondary-button" onclick="window.location.reload()">Try again</button></div>`;
+    return;
   }
   renderDashboard();
 }
@@ -363,7 +344,8 @@ document.querySelector('#theme-toggle').addEventListener('click', () => {
   document.body.classList.toggle('dark');
   localStorage.setItem('unishop-theme', document.body.classList.contains('dark') ? 'dark' : 'light');
 });
-document.querySelector('#signout-button').addEventListener('click', () => {
+document.querySelector('#signout-button').addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   localStorage.removeItem('unishop-token');
   localStorage.removeItem('unishop-user');
   window.location.assign('/');
