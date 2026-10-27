@@ -23,7 +23,7 @@ function render(data) {
         <div class="vendor-bars">${rating.distribution.map((row) => `<div class="vendor-bar"><span>${row.stars}★</span><i><b style="width:${row.count / max * 100}%"></b></i><span>${row.count}</span></div>`).join('')}</div>` : '<strong>New</strong><span>No ratings yet</span>'}</div>
     </section>
     ${products.length ? `<section class="vendor-section"><h2>Products (${products.length})</h2><div class="vendor-grid">${products.map((p) => `
-      <a class="vendor-card" href="/#product=${encodeURIComponent(p.id)}"><img src="${esc(img(p.image))}" alt="${esc(p.name)}" loading="lazy"><div><h3>${esc(p.name)}</h3><strong>${money(p.price)}</strong><br><small>${p.rating ? `★ ${p.rating}/5 (${p.reviews})` : 'Not rated yet'}${p.stock === 0 ? ' · Sold out' : ''}</small></div></a>`).join('')}</div></section>` : ''}
+      <a class="vendor-card" href="/product.html?id=${encodeURIComponent(p.id)}"><img src="${esc(img(p.image))}" alt="${esc(p.name)}" loading="lazy"><div><h3>${esc(p.name)}</h3><strong>${money(p.price)}</strong><br><small>${p.rating ? `★ ${p.rating}/5 (${p.reviews})` : 'Not rated yet'}${p.stock === 0 ? ' · Sold out' : ''}</small></div></a>`).join('')}</div></section>` : ''}
     ${services.length ? `<section class="vendor-section"><h2>Services (${services.length})</h2><div class="vendor-grid">${services.map((s) => `
       <a class="vendor-card" href="/#services"><img src="${esc(img(s.image))}" alt="${esc(s.title)}" loading="lazy"><div><h3>${esc(s.title)}</h3><strong>${money(s.price)}</strong><br><small>${esc(s.niche || '')}</small></div></a>`).join('')}</div></section>` : ''}
     ${!products.length && !services.length ? '<p class="vendor-empty">This shop has not listed anything yet.</p>' : ''}
