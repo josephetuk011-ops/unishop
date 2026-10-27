@@ -617,6 +617,11 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
 }));
 app.use('/uploads', express.static(uploadDirectory, { fallthrough: false, maxAge: '1d' }));
 
+// Digital Asset Links lets the Android app open the site full-screen. express.static skips dot-folders, so serve it explicitly.
+app.get('/.well-known/assetlinks.json', (_request: Request, response: Response) => {
+  response.setHeader('Cache-Control', 'no-cache');
+  response.type('application/json').sendFile(path.join(__dirname, '..', 'public', '.well-known', 'assetlinks.json'));
+});
 app.get('/api/app-downloads', (_request: Request, response: Response) => {
   const dir = path.join(__dirname, '..', 'public', 'downloads');
   const apk = path.join(dir, 'unishop.apk');

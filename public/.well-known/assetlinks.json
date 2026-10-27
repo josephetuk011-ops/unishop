@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.unishopit.twa",
+        "sha256_cert_fingerprints": ["88:B8:E2:F3:2F:27:B3:B1:1E:98:58:65:9F:7D:B0:35:C1:A3:9C:5C:11:FC:EE:C5:52:86:1F:B6:DA:3F:A3:27"]
+      }
+    }]
