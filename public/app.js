@@ -693,6 +693,7 @@ document.querySelectorAll('a[href="#services"], a[href="#providers"]').forEach((
 document.querySelector('#services')?.remove();
 if (currentUser?.name) document.querySelector('.account-button span:last-child').textContent = currentUser.name.split(' ')[0];
 if (localStorage.getItem('unishop-theme') === 'dark') document.body.classList.add('dark-theme');
+if (new URLSearchParams(window.location.search).get('signin') && !sessionToken) { history.replaceState(null, '', '/'); openAuth('customer', 'login'); }
 fetch('/api/services').then((response) => response.ok ? response.json() : []).then((data) => {
   if (Array.isArray(data) && data.length) {
     providers.splice(0, providers.length, ...data);
