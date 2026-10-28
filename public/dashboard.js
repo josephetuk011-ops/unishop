@@ -77,7 +77,7 @@ function orderRows(orders) {
 }
 function serviceCards(listings) {
   if (!listings.length) return '<div class="empty-state">Your live service listings will appear here after you publish one.</div>';
-  return `<div class="portfolio-grid">${listings.map((listing) => `<article class="work-card"><img src="${escapeHtml(listing.portfolio?.[0] || '')}" alt="${escapeHtml(listing.title)} work sample"><div class="work-card-body"><h3>${escapeHtml(listing.title)}</h3><p>${escapeHtml(listing.niche)} · ${formatMoney(listing.price)} · ${Number(listing.rating || 0).toFixed(1)} ★ (${listing.reviewCount || 0})</p><p>${escapeHtml(listing.description)}</p></div></article>`).join('')}</div>`;
+  return `<div class="portfolio-grid">${listings.map((listing) => `<article class="work-card"><img src="${escapeHtml(listing.portfolio?.[0] || '')}" alt="${escapeHtml(listing.title)} work sample"><div class="work-card-body"><h3>${escapeHtml(listing.title)}</h3><p>${escapeHtml(listing.niche)} · ${formatMoney(listing.price)} · ${Number(listing.rating || 0).toFixed(1)} ★ (${listing.reviewCount || 0})</p><p>${escapeHtml(listing.description)}</p><div class="card-actions"><button class="primary-button" type="button" data-edit-service="${escapeHtml(listing.id)}">Edit</button></div></div></article>`).join('')}</div>`;
 }
 function reviewsPanel(reviews) {
   const body = reviews.length ? reviews.slice().reverse().map((review) => `<article class="review-item"><strong>${escapeHtml(review.reviewer)} <span class="review-stars">${'★'.repeat(review.rating)}</span></strong><p>${escapeHtml(review.comment)}</p></article>`).join('') : '<div class="empty-state">Customer ratings and comments will appear here after completed bookings.</div>';
@@ -159,7 +159,7 @@ function sellerForm() {
 function sellerDashboard() {
   const { products, orders, metrics, user } = dashboardData;
   if (selectedView === 'profile') return profileForm();
-  if (selectedView === 'listings') return `${header('Your product catalogue', 'Manage the products customers can order.', '<button class="primary-button" data-open-form="product">+ Add product</button>')}${panel('Published products', `<div class="portfolio-grid">${products.length ? products.map((product) => `<article class="work-card"><img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}"><div class="work-card-body"><h3>${escapeHtml(product.name)}</h3><p>${formatMoney(product.price)} · ${escapeHtml(product.category)}</p><p class="stock-line">${stockText(product)}</p><button class="secondary-button" type="button" data-restock="${escapeHtml(product.id)}">Update stock</button></div></article>`).join('') : '<div class="empty-state">Add your first product to start your catalogue.</div>'}</div>`)}${productForm()}`;
+  if (selectedView === 'listings') return `${header('Your product catalogue', 'Manage the products customers can order.', '<button class="primary-button" data-open-form="product">+ Add product</button>')}${panel('Published products', `<div class="portfolio-grid">${products.length ? products.map((product) => `<article class="work-card"><img src="${escapeHtml(product.image)}" alt="${escapeHtml(product.name)}"><div class="work-card-body"><h3>${escapeHtml(product.name)}</h3><p>${formatMoney(product.price)} · ${escapeHtml(product.category)}</p><p class="stock-line">${stockText(product)}</p><div class="card-actions"><button class="primary-button" type="button" data-edit-product="${escapeHtml(product.id)}">Edit</button><button class="secondary-button" type="button" data-restock="${escapeHtml(product.id)}">Update stock</button></div></div></article>`).join('') : '<div class="empty-state">Add your first product to start your catalogue.</div>'}</div>`)}${productForm()}`;
   if (selectedView === 'activity') return `${header('Customer orders', 'Only confirmed Paystack payments appear as paid orders.')}${panel('Orders containing your products', table(['Order', 'Products', 'Total', 'Payment'], orderRows(orders), 'No paid orders yet.'))}`;
   if (selectedView === 'earnings') return `${header('Sales and earnings', 'Track paid product sales for your shop.') }<div class="metric-grid">${metric('Verified gross sales', formatMoney(metrics.grossSales), 'Before fees and refunds')}${metric('Paid orders', metrics.orderCount)}${metric('Active products', metrics.productCount)}</div>${moneyNote()}${panel('Paid order history', table(['Order', 'Products', 'Total', 'Payment'], orderRows(orders), 'No confirmed sales yet.'))}`;
   if (selectedView === 'earnings') return `${header('Sales and earnings', 'Track sales and withdraw available earnings.') }<div class="metric-grid">${metric('Verified gross sales', formatMoney(metrics.grossSales), 'Before commission and dispatch contribution')}${metric('Paid orders', metrics.orderCount)}${metric('Active products', metrics.productCount)}</div>${payoutPanel()}${panel('Paid order history', table(['Order', 'Products', 'Total', 'Payment'], orderRows(orders), 'No confirmed sales yet.'))}`;
@@ -351,6 +351,59 @@ document.addEventListener('submit', async (event) => {
     await api(`/api/orders/${encodeURIComponent(form.dataset.receive)}/confirm-delivery`, { method: 'POST', body: JSON.stringify({ rating: Number(form.elements.rating.value), comment: form.elements.comment.value }) });
     await refreshDashboard();
     notify('Thanks. The vendor can now withdraw this payment.');
+  } catch (error) { notify(error.message); button.disabled = false; }
+});
+
+
+function productEditForm(product) {
+  const sized = Array.isArray(product.sizes) && product.sizes.length > 0;
+  const categories = productCategoryGroups.map((entry) => `<optgroup label="${escapeHtml(entry.group)}">${entry.items.map((item) => `<option value="${escapeHtml(item)}"${item === product.category ? ' selected' : ''}>${escapeHtml(item)}</option>`).join('')}</optgroup>`).join('');
+  const legacy = productCategoryGroups.some((entry) => entry.items.includes(product.category)) ? '' : `<option value="${escapeHtml(product.category)}" selected>${escapeHtml(product.category)}</option>`;
+  const stock = sized
+    ? `<label class="form-field full">Quantity per size <span class="form-help">Change the numbers after a restock, like S:5, M:3, L:2.</span><input name="sizes" value="${escapeHtml(product.sizes.map((row) => `${row.label}:${row.quantity}`).join(', '))}" maxlength="200" required></label>`
+    : `<label class="form-field">Add to stock <span class="form-help">Now: ${product.stock === undefined || product.stock === null ? 'not tracked' : product.stock}. Enter how many you are adding.</span><input name="addQuantity" type="number" min="0" max="100000" step="1" value="0"></label><label class="form-field">Or set total in stock<input name="quantity" type="number" min="0" max="100000" step="1" placeholder="Keep"></label>`;
+  return `<form class="form-grid edit-form" data-product-edit-form="${escapeHtml(product.id)}"><label class="form-field full">Product name<input name="name" required minlength="3" maxlength="100" value="${escapeHtml(product.name)}"></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="1" value="${Number(product.price)}"></label><label class="form-field">Category<select name="category" required>${legacy}${categories}</select></label>${stock}<label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000">${escapeHtml(product.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
+}
+function serviceEditForm(listing) {
+  return `<form class="form-grid edit-form" data-service-edit-form="${escapeHtml(listing.id)}"><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" value="${escapeHtml(listing.title)}"></label><label class="form-field">Starting price (NGN)<input name="price" type="number" required min="500" step="1" value="${Number(listing.price)}"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500">${escapeHtml(listing.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
+}
+document.addEventListener('click', (event) => {
+  const editProduct = event.target.closest('[data-edit-product]');
+  const editService = event.target.closest('[data-edit-service]');
+  if (editProduct || editService) {
+    const product = editProduct && (dashboardData.products || []).find((item) => item.id === editProduct.dataset.editProduct);
+    const listing = editService && (dashboardData.listings || []).find((item) => item.id === editService.dataset.editService);
+    const body = (editProduct || editService).closest('.work-card-body');
+    if (!body || !(product || listing)) return;
+    body.innerHTML = product ? productEditForm(product) : serviceEditForm(listing);
+    body.querySelector('input')?.focus();
+    return;
+  }
+  if (event.target.closest('[data-cancel-edit]')) refreshDashboard();
+});
+document.addEventListener('submit', async (event) => {
+  const productForm = event.target.closest('[data-product-edit-form]');
+  const serviceForm = event.target.closest('[data-service-edit-form]');
+  if (!productForm && !serviceForm) return;
+  event.preventDefault();
+  const form = productForm || serviceForm;
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    if (productForm) {
+      const f = form.elements;
+      const body = { name: f.name.value, price: Number(f.price.value), category: f.category.value, description: f.description.value };
+      if (f.sizes) body.sizes = parseSizes(f.sizes.value);
+      else if (f.quantity.value.trim() !== '') body.quantity = f.quantity.value.trim();
+      else if (Number(f.addQuantity.value) > 0) body.addQuantity = Number(f.addQuantity.value);
+      await api(`/api/seller/products/${encodeURIComponent(productForm.dataset.productEditForm)}`, { method: 'PATCH', body: JSON.stringify(body) });
+      notify('Product updated. Customers see the new price and stock now.');
+    } else {
+      const f = form.elements;
+      await api(`/api/provider/listings/${encodeURIComponent(serviceForm.dataset.serviceEditForm)}`, { method: 'PATCH', body: JSON.stringify({ title: f.title.value, price: Number(f.price.value), description: f.description.value }) });
+      notify('Service updated.');
+    }
+    await refreshDashboard();
   } catch (error) { notify(error.message); button.disabled = false; }
 });
 
