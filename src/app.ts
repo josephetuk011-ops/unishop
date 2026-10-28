@@ -86,7 +86,7 @@ function generateOtp() {
 }
 function issueSignedToken(user: User, type: 'access' | 'refresh') {
   const expiresIn = type === 'access' ? '15m' : '7d';
-  return jwt.sign({ sub: user.id, role: user.role, type }, jwtSecret, { expiresIn });
+  return jwt.sign({ sub: user.id, role: user.role, type }, jwtSecret, { expiresIn, algorithm: 'HS256' });
 }
 function setAuthCookies(response: Response, accessToken: string, refreshToken?: string) {
   const secureCookie = process.env.NODE_ENV === 'production';
@@ -168,6 +168,7 @@ const imageUpload = multer({
     callback(null, true);
   }
 });
+const allowedVideoExtensions = ['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi', '.3gp', '.3g2', '.mpeg', '.mpg', '.wmv', '.flv', '.ogv', '.ts'];
 const maxVideoBytes = 2 * 1024 * 1024 - 1; // videos must be under 2 MB
 const productVideoUpload = multer({
   storage: multer.diskStorage({
@@ -178,7 +179,8 @@ const productVideoUpload = multer({
     filename: (_request, file, callback) => {
       const fromName = path.extname(file.originalname || '').toLowerCase().replace(/[^.a-z0-9]/g, '');
       const fromType = (file.mimetype.split('/')[1] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const extension = /^\.[a-z0-9]{2,5}$/.test(fromName) ? fromName : /^[a-z0-9]{2,5}$/.test(fromType) ? `.${fromType}` : '.mp4';
+      // Only known video extensions are kept, so an upload can never be saved as .html or .js and run as a page.
+      const extension = [fromName, `.${fromType}`].find((candidate) => allowedVideoExtensions.includes(candidate)) || '.mp4';
       callback(null, `${Date.now()}-${randomBytes(10).toString('hex')}${extension}`);
     }
   }),
@@ -188,6 +190,31 @@ const productVideoUpload = multer({
     callback(null, true);
   }
 });
+
+// Browsers and scripts can claim any MIME type, so check the first bytes of an uploaded image against the real formats.
+function looksLikeImage(file: string) {
+  try {
+    const fd = fs.openSync(file, 'r');
+    const head = Buffer.alloc(12);
+    fs.readSync(fd, head, 0, 12, 0);
+    fs.closeSync(fd);
+    return (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff)
+      || head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+      || (head.subarray(0, 4).toString('latin1') === 'RIFF' && head.subarray(8, 12).toString('latin1') === 'WEBP');
+  } catch { return false; }
+}
+function looksLikeVideo(file: string) {
+  try {
+    const fd = fs.openSync(file, 'r');
+    const head = Buffer.alloc(16);
+    fs.readSync(fd, head, 0, 16, 0);
+    fs.closeSync(fd);
+    const text = head.toString('latin1');
+    // Reject anything that is plainly a web page, script or image rather than a video container.
+    if (/^\s*(<|#!|\{|\[)/.test(text) || head[0] === 0xff && head[1] === 0xd8) return false;
+    return true;
+  } catch { return false; }
+}
 const jwtSecret = process.env.JWT_SECRET || 'unishop-development-only-change-this-secret';
 const adminIdentity: User = { id: 'railway-admin', name: 'Unishop Administrator', username: 'admin', email: 'admin@unishop.local', role: 'admin', passwordHash: '', createdAt: '2026-01-01T00:00:00.000Z' };
 const paystackSecret = process.env.PAYSTACK_SECRET_KEY || '';
@@ -352,7 +379,7 @@ function authenticatedUser(request: Request): User | undefined {
   const token = getTokenFromRequest(request);
   if (!token) return undefined;
   try {
-    const payload = jwt.verify(token, jwtSecret) as { sub: string; type?: 'access' | 'refresh'; role?: Role };
+    const payload = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] }) as { sub: string; type?: 'access' | 'refresh'; role?: Role };
     if (payload.type && payload.type !== 'access') return undefined;
     if (payload.sub === adminIdentity.id && payload.role === 'admin') return adminIdentity;
     const user = state.users.find((member) => member.id === payload.sub);
@@ -665,6 +692,31 @@ const adminRateLimiter = rateLimit({
   skipSuccessfulRequests: true,
   handler: (_request, response) => response.status(429).json({ error: 'Too many failed admin sign-in attempts. Please try again in 15 minutes.' })
 });
+const apiRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (request) => request.path === '/payments/webhook' || request.path === '/health',
+  handler: (_request, response) => response.status(429).json({ error: 'Too many requests. Slow down and try again in a minute.' })
+});
+const signupRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_request, response) => response.status(429).json({ error: 'Too many attempts from this connection. Try again in an hour.' })
+});
+const uploadRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_request, response) => response.status(429).json({ error: 'Too many uploads. Try again later.' })
+});
+app.use('/api', apiRateLimiter);
+app.use(['/api/auth/register', '/api/auth/send-otp', '/api/auth/verify-otp'], signupRateLimiter);
+app.use('/api/uploads', uploadRateLimiter);
 app.use('/api/auth/login', authRateLimiter);
 app.use('/api/admin/login', adminRateLimiter);
 app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '100kb' }), async (request: Request, response: Response) => {
@@ -717,7 +769,13 @@ app.use(express.static(path.join(__dirname, '..', 'public'), {
     res.setHeader('Cache-Control', /\.(?:jpe?g|png|webp|svg|ico|mp4|woff2?)$/i.test(filePath) ? 'public, max-age=604800' : 'no-cache');
   }
 }));
-app.use('/uploads', express.static(uploadDirectory, { fallthrough: false, maxAge: '1d' }));
+app.use('/uploads', (_request, response, next) => {
+  // Uploaded files are user content: never let a browser treat one as a page or script.
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  response.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'none'; sandbox");
+  response.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+  next();
+}, express.static(uploadDirectory, { fallthrough: false, maxAge: '1d', dotfiles: 'deny', index: false }));
 
 // Digital Asset Links lets the Android app open the site full-screen. express.static skips dot-folders, so serve it explicitly.
 app.get('/.well-known/assetlinks.json', (_request: Request, response: Response) => {
@@ -1027,6 +1085,10 @@ app.post('/api/uploads/portfolio', (request: Request, response: Response, next: 
   imageUpload.array('images', 6)(request, response, (error: any) => {
     if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Each photo must be 5 MB or smaller.' : error.message || 'The photos could not be uploaded.' });
     const files = (request.files || []) as Express.Multer.File[];
+    if (files.some((file) => !looksLikeImage(file.path))) {
+      files.forEach((file) => fs.unlink(file.path, () => {}));
+      return response.status(400).json({ error: 'One of the files is not a real JPG, PNG or WebP image.' });
+    }
     response.status(201).json({ images: files.map((file) => `/uploads/${file.filename}`) });
   });
 });
@@ -1037,6 +1099,10 @@ app.post(['/api/uploads/short-video', '/api/uploads/product-video'], (request: R
   productVideoUpload.single('video')(request, response, (error: any) => {
     if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Video must be under 2 MB.' : error.message || 'The video could not be uploaded.' });
     if (!request.file) return response.status(400).json({ error: 'Choose a short video.' });
+    if (!looksLikeVideo(request.file.path)) {
+      fs.unlink(request.file.path, () => {});
+      return response.status(400).json({ error: 'That file is not a video.' });
+    }
     const videoDuration = Number(request.body?.duration);
     if (!Number.isFinite(videoDuration) || videoDuration <= 0 || videoDuration > 30) {
       fs.unlink(request.file.path, () => {});
@@ -1487,7 +1553,7 @@ app.post('/api/auth/refresh', (request: Request, response: Response) => {
   const supplied = request.cookies?.[refreshTokenCookieName] || request.body?.refreshToken;
   if (typeof supplied !== 'string' || !supplied) fail(401, 'Sign in to continue.');
   let payload: { sub: string; type?: string };
-  try { payload = jwt.verify(supplied, jwtSecret) as { sub: string; type?: string }; } catch { fail(401, 'Your session has expired. Sign in again.'); }
+  try { payload = jwt.verify(supplied, jwtSecret, { algorithms: ['HS256'] }) as { sub: string; type?: string }; } catch { fail(401, 'Your session has expired. Sign in again.'); }
   const user = state.users.find((member) => member.id === payload.sub);
   if (payload.type !== 'refresh' || !user || user.role === 'admin' || user.suspendedAt) fail(401, 'Your session has expired. Sign in again.');
   const accessToken = tokenFor(user);
