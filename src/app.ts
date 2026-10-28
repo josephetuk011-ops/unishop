@@ -1144,6 +1144,23 @@ app.post('/api/provider/listings', (request: Request, response: Response) => {
   response.status(201).json({ listing });
 });
 
+app.patch('/api/provider/listings/:id', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  if (user.role !== 'provider') fail(403, 'Use a service provider account to edit a service listing.');
+  const listing = state.serviceListings.find((item) => item.id === request.params.id && item.userId === user.id);
+  if (!listing) fail(404, 'Service not found.');
+  const { title, description, price } = request.body || {};
+  if (title !== undefined && (typeof title !== 'string' || title.trim().length < 3 || title.length > 100)) fail(400, 'Enter a service title.');
+  if (description !== undefined && (typeof description !== 'string' || description.trim().length < 10 || description.length > 1500)) fail(400, 'Describe your service in at least 10 characters.');
+  if (price !== undefined && (!Number.isInteger(Number(price)) || Number(price) < 500 || Number(price) > 100000000)) fail(400, 'Enter a valid price in Naira.');
+  if (title !== undefined) listing.title = title.trim();
+  if (description !== undefined) listing.description = description.trim();
+  if (price !== undefined) listing.price = Number(price);
+  listing.updatedAt = new Date().toISOString();
+  saveState();
+  response.json({ listing });
+});
+
 function parseStock(body: any): { stock?: number; sizes?: { label: string; quantity: number }[] } {
   const { quantity, sizes } = body || {};
   const count = (value: any) => { const n = Number(value); if (!Number.isInteger(n) || n < 0 || n > 100000) fail(400, 'Quantities must be whole numbers from 0 to 100,000.'); return n; };
@@ -1186,6 +1203,40 @@ app.post('/api/seller/products', (request: Request, response: Response) => {
   state.sellerProducts.push(product);
   saveState();
   response.status(201).json({ product });
+});
+
+app.patch('/api/seller/products/:id', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  if (user.role !== 'seller') fail(403, 'Use a seller account to edit a product.');
+  const product = state.sellerProducts.find((item) => item.id === request.params.id && item.userId === user.id);
+  if (!product) fail(404, 'Product not found.');
+  const { name, category, description, price, addQuantity } = request.body || {};
+  if (name !== undefined && (typeof name !== 'string' || name.trim().length < 3 || name.length > 100)) fail(400, 'Enter a product name.');
+  if (category !== undefined && (typeof category !== 'string' || !validProductCategories.has(category))) fail(400, 'Choose a valid product category.');
+  if (description !== undefined && (typeof description !== 'string' || description.trim().length < 5 || description.length > 1000)) fail(400, 'Add a short product description.');
+  if (price !== undefined && (!Number.isInteger(Number(price)) || Number(price) < 100 || Number(price) > 100000000)) fail(400, 'Enter a valid price in Naira.');
+  const stockFields = parseStock(request.body);
+  const hasSizes = Array.isArray(product.sizes) && product.sizes.length > 0;
+  let addition = 0;
+  if (addQuantity !== undefined && addQuantity !== null && addQuantity !== '') {
+    addition = Number(addQuantity);
+    if (!Number.isInteger(addition) || addition < 0 || addition > 100000) fail(400, 'Quantities must be whole numbers from 0 to 100,000.');
+    if (hasSizes || stockFields.sizes) fail(400, 'This product is stocked by size. Enter the number for each size instead.');
+  }
+  // Apply only after every field has validated.
+  if (name !== undefined) product.name = name.trim();
+  if (category !== undefined) product.category = category;
+  if (description !== undefined) product.description = description.trim();
+  if (price !== undefined) product.price = Number(price);
+  if (stockFields.stock !== undefined) {
+    product.stock = stockFields.stock;
+    if (stockFields.sizes) product.sizes = stockFields.sizes; else delete product.sizes;
+  } else if (addition > 0) {
+    product.stock = Math.min(100000, (Number(product.stock) || 0) + addition);
+  }
+  product.updatedAt = new Date().toISOString();
+  saveState();
+  response.json({ product });
 });
 
 app.patch('/api/seller/products/:id/stock', (request: Request, response: Response) => {

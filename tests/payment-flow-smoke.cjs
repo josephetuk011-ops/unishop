@@ -81,6 +81,12 @@ const server = app.listen(0, async () => {
       niche: 'Barbing', title: 'Uyo fades', description: 'Barbing service with home visits in Uyo.', price: 18000, portfolio: ['/uploads/test-portfolio.jpg']
     }, provider.data.token);
     assert.equal(listing.status, 201);
+    const listingId = listing.data.listing.id;
+    const editedListing = await send('PATCH', `/api/provider/listings/${listingId}`, { description: 'Barbing service with home visits across Uyo.', price: 18000 }, provider.data.token);
+    assert.equal(editedListing.status, 200);
+    assert.match(editedListing.data.listing.description, /across Uyo/);
+    assert.equal((await send('PATCH', `/api/provider/listings/${listingId}`, { price: 10 }, provider.data.token)).status, 400);
+    assert.equal((await send('PATCH', `/api/provider/listings/${listingId}`, { price: 20000 })).status, 401);
 
     const registration = await send('POST', '/api/auth/register', {
       name: 'Test Customer', username: 'uyocustomer', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'customer'

@@ -25,3 +25,7 @@
 .rate-stars input:checked ~ label, .rate-stars label:hover, .rate-stars label:hover ~ label { color: #d4a017; }
 .track-done { margin: 12px 0 0; color: #1e8a4c; font-weight: 700; }
 @media (max-width: 560px) { .track-steps { grid-template-columns: 1fr; } .track-step { padding: 0 0 0 22px; } .track-step::before { display: none; } .track-dot { top: 3px; } }
+
+.card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.work-card-body .edit-form{margin-top:4px}
+.work-card-body .edit-form .form-actions{display:flex;gap:8px}
