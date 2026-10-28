@@ -74,7 +74,7 @@ const server = app.listen(0, async () => {
     const providerLogin = await send('POST', '/api/auth/login', { username: 'uyoprovider', password: 'A-secure-test-password' });
     assert.equal(providerLogin.data.user.role, 'provider');
     const providerProfile = await send('PATCH', '/api/profile', {
-      name: 'Test Provider', businessName: 'Test Barbing Studio', position: 'Owner and barber', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'Barbing appointments and home visits for customers across Uyo.', profileImage: '/uploads/provider-profile.jpg'
+      name: 'Test Provider', businessName: 'Test Barbing Studio', position: 'Owner and barber', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'Barbing appointments and home visits for customers across Uyo.', profileImage: '/uploads/provider-profile.jpg', ceoImage: '/uploads/ceo.jpg'
     }, provider.data.token);
     assert.equal(providerProfile.status, 200);
     const listing = await send('POST', '/api/provider/listings', {
@@ -107,7 +107,7 @@ const server = app.listen(0, async () => {
     assert.equal((await send('POST', '/api/profile/nin', { nin: '12345678902' }, seller.data.token)).status, 200);
     assert.equal((await send('POST', '/api/auth/login', { username: 'uyoseller', password: 'A-secure-test-password' })).data.user.role, 'seller');
     const sellerProfile = await send('PATCH', '/api/profile', {
-      name: 'Test Seller', businessName: 'Test Uyo Store', position: 'Owner', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'A local shop sharing practical home goods with customers around Uyo.', profileImage: '/uploads/seller-profile.jpg'
+      name: 'Test Seller', businessName: 'Test Uyo Store', position: 'Owner', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'A local shop sharing practical home goods with customers around Uyo.', profileImage: '/uploads/seller-profile.jpg', ceoImage: '/uploads/ceo.jpg'
     }, seller.data.token);
     assert.equal(sellerProfile.status, 200);
     const uploadMedia = async (route, field, filename, mimeType, bytes, token, fields = {}) => {

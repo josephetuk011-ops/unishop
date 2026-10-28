@@ -43,7 +43,7 @@ const validProductCategories = new Set([...productCategoryGroups.flatMap((entry)
 const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED === 'true';
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -322,17 +322,17 @@ function asyncRoute(handler: (request: Request, response: Response) => Promise<u
 }
 
 function cleanUser(user: User) {
-  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, niche: user.niche, ninLast4: user.ninLast4, ninStatus: user.ninLast4 ? (user.ninStatus || 'pending') : undefined, ninVerifiedAt: user.ninVerifiedAt, ninNote: user.ninNote, ninRequired: ninEnabled() && requiresNin(user.role), createdAt: user.createdAt };
+  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, ceoImage: user.ceoImage, teamImages: user.teamImages, niche: user.niche, ninLast4: user.ninLast4, ninStatus: user.ninLast4 ? (user.ninStatus || 'pending') : undefined, ninVerifiedAt: user.ninVerifiedAt, ninNote: user.ninNote, ninRequired: ninEnabled() && requiresNin(user.role), createdAt: user.createdAt };
 }
 
 function publicBusinessProfile(userId: string | undefined) {
   const user = state.users.find((member) => member.id === userId && !member.suspendedAt);
   if (!user || !['seller', 'provider'].includes(user.role)) return undefined;
-  return { userId: user.id, name: user.name, businessName: user.businessName || '', position: user.position || '', placeOfOperation: user.placeOfOperation || '', aboutMe: user.aboutMe || '', profileImage: user.profileImage || '', role: user.role };
+  return { userId: user.id, name: user.name, businessName: user.businessName || '', position: user.position || '', placeOfOperation: user.placeOfOperation || '', aboutMe: user.aboutMe || '', profileImage: user.profileImage || '', ceoImage: user.ceoImage || '', teamImages: user.teamImages || [], role: user.role };
 }
 
 function hasCompleteBusinessProfile(user: User) {
-  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/') && (!ninEnabled() || !requiresNin(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
+  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/') && user.ceoImage?.startsWith('/uploads/') && (!ninEnabled() || !requiresNin(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
 
 function legacyUsername(user: User) {
@@ -1537,7 +1537,9 @@ app.patch('/api/profile', (request: Request, response: Response) => {
     position: z.string().trim().min(2).max(80),
     placeOfOperation: z.string().trim().min(2).max(120),
     aboutMe: z.string().trim().min(20).max(1000),
-    profileImage: z.string().regex(/^\/uploads\/[\w.-]+$/)
+    profileImage: z.string().regex(/^\/uploads\/[\w.-]+$/),
+    ceoImage: z.string().regex(/^\/uploads\/[\w.-]+$/, 'Upload a photo of the owner or CEO.'),
+    teamImages: z.array(z.string().regex(/^\/uploads\/[\w.-]+$/)).max(6).optional()
   });
   const parsed = profileSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
@@ -1547,6 +1549,8 @@ app.patch('/api/profile', (request: Request, response: Response) => {
   user.placeOfOperation = sanitizeText(parsed.data.placeOfOperation, '');
   user.aboutMe = sanitizeText(parsed.data.aboutMe, '');
   user.profileImage = parsed.data.profileImage;
+  user.ceoImage = parsed.data.ceoImage;
+  user.teamImages = parsed.data.teamImages ?? user.teamImages ?? [];
   saveState();
   auditAction('profile.updated', user.id, { role: user.role });
   response.json({ user: cleanUser(user), complete: hasCompleteBusinessProfile(user) });

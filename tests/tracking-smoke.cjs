@@ -36,7 +36,7 @@ const server = app.listen(0, async () => {
     const stamp = Date.now();
     const seller = await send('POST', '/api/auth/register', { name: 'Track Seller', username: `trs${stamp}`, email: `trs${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Track Shop' });
     const st = seller.data.token;
-    await send('PATCH', '/api/profile', { name: 'Track Seller', businessName: 'Track Shop', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'A local shop selling things around Uyo.', profileImage: '/uploads/p.jpg' }, st);
+    await send('PATCH', '/api/profile', { name: 'Track Seller', businessName: 'Track Shop', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'A local shop selling things around Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/ceo.jpg' }, st);
     const product = (await send('POST', '/api/seller/products', { category: 'Fashion', description: 'A nice shirt for you.', price: 5000, image: '/uploads/shirt.jpg', name: 'Track shirt', quantity: 5 }, st)).data.product;
     assert.equal((await send('POST', '/api/auth/register', { name: 'Rider', username: `rid${stamp}`, email: `rid${stamp}@example.com`, password: 'marketplacepassword123', role: 'dispatch', businessName: 'Ewet' })).status, 403);
     const buyer = await send('POST', '/api/auth/register', { name: 'Track Buyer', username: `trb${stamp}`, email: `trb${stamp}@example.com`, password: 'marketplacepassword123', role: 'customer' });

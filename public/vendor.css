@@ -25,3 +25,5 @@
 .vendor-review{padding:12px 0;border-bottom:1px solid #e9edf5}
 .vendor-review p{margin:4px 0 0;color:#4a5468}
 .help-back-link{color:#1f3a8a;font-weight:600;text-decoration:none}
+
+.vendor-people-row{display:flex;gap:14px;overflow-x:auto;padding-bottom:6px}.vendor-people-row figure{margin:0;flex:0 0 150px}.vendor-people-row img{width:150px;height:170px;object-fit:cover;border-radius:12px;display:block}.vendor-people-row figcaption{display:flex;flex-direction:column;margin-top:6px;font-size:14px}.vendor-people-row small{opacity:.7}
