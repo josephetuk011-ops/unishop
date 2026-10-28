@@ -693,6 +693,23 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit:
   }
 });
 
+// Shop links are shared on WhatsApp and social apps, which read the page's meta tags rather than run its script.
+app.get('/vendor.html', (request: Request, response: Response, next: NextFunction) => {
+  const profile = publicBusinessProfile(String(request.query.id || ''));
+  if (!profile) return next();
+  const escapeAttr = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+  const base = (process.env.PUBLIC_URL || `${request.protocol}://${request.get('host')}`).replace(/\/$/, '');
+  const name = profile.businessName || profile.name;
+  const title = `${name} on Unishop`;
+  const description = (profile.aboutMe || `Shop with ${name} in ${profile.placeOfOperation || 'Uyo'} on Unishop.`).slice(0, 180);
+  const image = profile.profileImage ? (profile.profileImage.startsWith('/') ? `${base}${profile.profileImage}` : profile.profileImage) : `${base}/assets/icon-512.png`;
+  const tags = `<meta property="og:type" content="website"><meta property="og:site_name" content="Unishop"><meta property="og:title" content="${escapeAttr(title)}"><meta property="og:description" content="${escapeAttr(description)}"><meta property="og:image" content="${escapeAttr(image)}"><meta property="og:url" content="${escapeAttr(`${base}/vendor.html?id=${encodeURIComponent(profile.userId)}`)}"><meta name="twitter:card" content="summary">`;
+  fs.readFile(path.join(__dirname, '..', 'public', 'vendor.html'), 'utf8', (error, html) => {
+    if (error) return next();
+    response.setHeader('Cache-Control', 'no-cache');
+    response.type('html').send(html.replace(/<title>[^<]*<\/title>/, `<title>${escapeAttr(title)}</title>${tags}`));
+  });
+});
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   etag: true,
   setHeaders: (res, filePath) => {
