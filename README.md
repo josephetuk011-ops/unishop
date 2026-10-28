@@ -79,3 +79,7 @@ Every account has a link (`/?ref=CODE`, built from `PUBLIC_URL` or the request h
 ## Order tracking
 
 Paid product orders show a Track goods panel in the customer workspace: order confirmed, collected from seller, on dispatch, at your doorstep. The admin moves each order forward in the admin portal (Orders, Delivery tracking); steps only move forward and the customer is notified. When it reaches the doorstep the customer taps Received, okay and can rate the product. That confirmation releases the vendor's earnings for withdrawal. Dispatch rider sign-up and sign-in are paused unless `DISPATCH_SIGNIN_ENABLED=true`.
+
+## Editing listings
+
+Vendors and service providers can edit their products and services from My listings: price changes, restocking (add to stock or set the total) and descriptions. Price changes apply to new orders and bookings only.
