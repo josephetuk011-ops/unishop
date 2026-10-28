@@ -35,7 +35,7 @@ const server = app.listen(0, async () => {
     const stamp = Date.now();
     const seller = await send('POST', '/api/auth/register', { name: 'Stock Seller', username: `stk${stamp}`, email: `stk${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Stock Shop' });
     const st = seller.data.token;
-    assert.equal((await send('PATCH', '/api/profile', { name: 'Stock Seller', businessName: 'Stock Shop', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'A local shop selling clothes around Uyo.', profileImage: '/uploads/p.jpg' }, st)).status, 200);
+    assert.equal((await send('PATCH', '/api/profile', { name: 'Stock Seller', businessName: 'Stock Shop', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'A local shop selling clothes around Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/ceo.jpg' }, st)).status, 200);
     const cats = (await send('GET', '/api/product-categories')).data.groups;
     assert.ok(cats.flatMap((g) => g.items).length >= 60, 'comprehensive category list');
     assert.equal((await send('POST', '/api/seller/products', { category: 'Made-up category', description: 'A nice shirt for you.', price: 5000, image: '/uploads/shirt.jpg', name: 'Bad category', quantity: 1 }, st)).status, 400);

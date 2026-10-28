@@ -90,7 +90,7 @@ describe('E-Marketplace Application', () => {
       expect((await request(app).post('/api/profile/nin').set('Authorization', `Bearer ${registration.body.token}`).send({ nin: uniqueNin() })).status).toBe(200);
       const profile = await request(app).patch('/api/profile')
         .set('Authorization', `Bearer ${registration.body.token}`)
-        .send({ name: 'Marketplace Provider', businessName: 'Test Barbershop', position: 'Owner and barber', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'I offer reliable barber appointments for homes and businesses across Uyo.', profileImage: '/uploads/test-profile.jpg' });
+        .send({ name: 'Marketplace Provider', businessName: 'Test Barbershop', position: 'Owner and barber', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'I offer reliable barber appointments for homes and businesses across Uyo.', profileImage: '/uploads/test-profile.jpg', ceoImage: '/uploads/ceo.jpg' });
       expect(profile.status).toBe(200);
       expect(profile.body.complete).toBe(true);
       const publicAdminRegistration = await request(app).post('/api/auth/register').send({
@@ -249,7 +249,7 @@ describe('E-Marketplace Application', () => {
       position: 'Owner and operator',
       placeOfOperation: 'Ewet Housing, Uyo',
       aboutMe: 'Local marketplace business serving customers across Uyo.',
-      profileImage: '/uploads/marketplace-user.jpg'
+      profileImage: '/uploads/marketplace-user.jpg', ceoImage: '/uploads/ceo.jpg'
     });
     expect(profile.status).toBe(200);
     expect(profile.body.complete).toBe(true);

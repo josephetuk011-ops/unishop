@@ -214,6 +214,8 @@ function profileForm() {
       <label class="form-field">Place of operation<input name="placeOfOperation" required minlength="2" maxlength="120" value="${escapeHtml(user.placeOfOperation || '')}" placeholder="e.g. Ewet Housing, Uyo"></label>
       <label class="form-field full">About you and your business<textarea name="aboutMe" required minlength="20" maxlength="1000" rows="5" placeholder="Tell customers what you do, what makes your business special and the areas you serve.">${escapeHtml(user.aboutMe || '')}</textarea><span class="form-help">This introduction is shown on your public brand profile.</span></label>
       <label class="form-field full profile-photo-field">Profile or brand photo<input name="profileImage" type="file" accept="image/jpeg,image/png,image/webp" ${user.profileImage ? '' : 'required'}><span class="form-help">JPG, PNG or WebP · maximum 5 MB. This image appears with your public profile.</span>${image}</label>
+      <label class="form-field full profile-photo-field">Photo of the owner or CEO<input name="ceoImage" id="ceo-image-input" type="file" accept="image/jpeg,image/png,image/webp" ${user.ceoImage ? '' : 'required'}><span class="form-help">Customers trust shops they can see. This face appears on your shop page. JPG, PNG or WebP · maximum 5 MB.</span><img class="profile-image-preview" id="ceo-image-preview" alt="Owner photo preview" ${user.ceoImage ? `src="${escapeHtml(user.ceoImage)}"` : 'hidden'}></label>
+      <label class="form-field full profile-photo-field">Photos of your workers (optional, up to 6)<input name="teamImages" id="team-images-input" type="file" accept="image/jpeg,image/png,image/webp" multiple><span class="form-help">If you have staff, show them. Choosing new photos replaces the current ones.</span><div class="team-preview" id="team-preview">${(user.teamImages || []).map((src) => `<img alt="Team member" src="${escapeHtml(src)}">`).join('')}</div></label>
       <div class="form-actions"><button class="primary-button" type="submit">${complete ? 'Save profile' : 'Save and continue'}</button></div>
     </form></div></section>${ninPanel(user)}`;
 }
@@ -227,7 +229,7 @@ function ninPanel(user) {
   return `<div class="panel-gap"><section class="panel" id="nin-panel"><header class="panel-heading"><h3>Identity verification (NIN)</h3><b style="color:${colors[status]}">${labels[status]}</b></header><div class="panel-body"><p class="earnings-note">${escapeHtml(note)}</p>${form}</div></section></div>`;
 }
 function businessProfileComplete(user) {
-  return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && (!user.ninRequired || (user.ninLast4 && user.ninStatus !== 'failed')));
+  return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && user.ceoImage && (!user.ninRequired || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
 function dispatchDashboard() {
   const { jobs, metrics, user } = dashboardData;
@@ -507,6 +509,14 @@ document.addEventListener('change', (event) => {
     const images = [...event.target.files].slice(0, 6);
     document.querySelector('#service-preview').innerHTML = images.map((image) => `<img alt="Selected work photo" src="${URL.createObjectURL(image)}">`).join('');
   }
+  if (event.target.matches('#ceo-image-input') && event.target.files[0]) {
+    const preview = document.querySelector('#ceo-image-preview');
+    preview.src = URL.createObjectURL(event.target.files[0]);
+    preview.hidden = false;
+  }
+  if (event.target.matches('#team-images-input')) {
+    document.querySelector('#team-preview').innerHTML = [...event.target.files].slice(0, 6).map((file) => `<img alt="Team member" src="${URL.createObjectURL(file)}">`).join('');
+  }
   if (event.target.matches('#profile-form [name="profileImage"]') && event.target.files[0]) {
     const preview = document.querySelector('#profile-image-preview');
     preview.src = URL.createObjectURL(event.target.files[0]);
@@ -526,6 +536,10 @@ document.addEventListener('submit', async (event) => {
         const uploaded = await uploadFiles([form.elements.profileImage.files[0]]);
         profileImage = uploaded.images[0];
       }
+      let ceoImage = dashboardData.user.ceoImage;
+      if (form.elements.ceoImage.files[0]) ceoImage = (await uploadFiles([form.elements.ceoImage.files[0]])).images[0];
+      let teamImages;
+      if (form.elements.teamImages.files.length) teamImages = (await uploadFiles([...form.elements.teamImages.files].slice(0, 6))).images;
       await api('/api/profile', {
         method: 'PATCH',
         body: JSON.stringify({
@@ -534,7 +548,9 @@ document.addEventListener('submit', async (event) => {
           position: form.elements.position.value,
           placeOfOperation: form.elements.placeOfOperation.value,
           aboutMe: form.elements.aboutMe.value,
-          profileImage
+          profileImage,
+          ceoImage,
+          ...(teamImages ? { teamImages } : {})
         })
       });
       await refreshDashboard();
