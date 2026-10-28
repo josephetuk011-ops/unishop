@@ -29,3 +29,4 @@
 .card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .work-card-body .edit-form{margin-top:4px}
 .work-card-body .edit-form .form-actions{display:flex;gap:8px}
+.store-link{margin-bottom:16px}.store-link-row{display:flex;gap:8px;margin:8px 0}.store-link-row input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line,#d9e0ee);border-radius:8px;font:inherit;background:transparent;color:inherit}a.secondary-button{text-decoration:none;display:inline-flex;align-items:center}

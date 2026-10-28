@@ -59,6 +59,9 @@ const server = app.listen(0, async () => {
     assert.equal(shop.data.vendor.passwordHash, undefined);
     assert.equal(shop.data.vendor.email, undefined);
     assert.equal((await send('GET', '/api/vendors/does-not-exist')).status, 404);
+    const shopPage = await fetch(`${base}/vendor.html?id=${sellerId}`).then((r) => r.text());
+    assert.match(shopPage, /og:title" content="[^"]+ on Unishop"/, 'shop link has a share preview');
+    assert.ok(!/<script>alert/.test(shopPage));
     // another account cannot edit this seller's product
     const intruder = await send('POST', '/api/auth/register', { name: 'Other Seller', username: 'otherseller1', email: 'other-seller1@example.com', password: 'marketplacepassword123', role: 'customer' });
     assert.equal((await send('PATCH', `/api/seller/products/${sneakerId}`, { price: 100 }, intruder.data.token)).status, 403);
