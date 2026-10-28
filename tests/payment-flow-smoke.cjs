@@ -127,6 +127,23 @@ const server = app.listen(0, async () => {
     assert.match(bigVideo.data.error, /under 2 MB/);
     const notVideo = await uploadMedia('/api/uploads/short-video', 'video', 'x.txt', 'text/plain', Buffer.from('hi'), provider.data.token, { duration: 5 });
     assert.equal(notVideo.status, 400);
+    // security: a page disguised as a video or image is refused, and uploads can never be saved as .html
+    const htmlVideo = await uploadMedia('/api/uploads/short-video', 'video', 'evil.html', 'video/mp4', Buffer.from('<html><script>alert(1)</script></html>'), provider.data.token, { duration: 5 });
+    assert.equal(htmlVideo.status, 400, 'html disguised as video is refused');
+    const htmlNamedVideo = await uploadMedia('/api/uploads/short-video', 'video', 'evil.html', 'video/mp4', Buffer.from('\x00\x00\x00\x18ftypmp42realvideo'), provider.data.token, { duration: 5 });
+    assert.equal(htmlNamedVideo.status, 201);
+    assert.match(htmlNamedVideo.data.video, /\.mp4$/, 'unknown extension is replaced');
+    const fakeImage = await uploadMedia('/api/uploads/portfolio', 'images', 'x.png', 'image/png', Buffer.from('<svg onload=alert(1)>'), provider.data.token);
+    assert.equal(fakeImage.status, 400, 'non-image content is refused');
+    const realPng = await uploadMedia('/api/uploads/portfolio', 'images', 'x.png', 'image/png', Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32)]), provider.data.token);
+    assert.equal(realPng.status, 201);
+    const served = await nativeFetch(`${baseUrl}${realPng.data.images[0]}`);
+    assert.equal(served.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(served.headers.get('content-security-policy') || '', /sandbox/);
+    const forged = require('jsonwebtoken').sign({ sub: 'railway-admin', role: 'admin', type: 'access' }, 'wrong-secret');
+    assert.equal((await send('GET', '/api/admin/dashboard', undefined, forged)).status, 401, 'token signed with another secret is refused');
+    const noneToken = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url') + '.' + Buffer.from(JSON.stringify({ sub: 'railway-admin', role: 'admin', type: 'access' })).toString('base64url') + '.';
+    assert.equal((await send('GET', '/api/admin/dashboard', undefined, noneToken)).status, 401, 'unsigned token is refused');
     const providerVideo = await uploadMedia('/api/uploads/short-video', 'video', 'service.mp4', 'video/mp4', Buffer.from('mock-mp4-content'), provider.data.token, { duration: 30 });
     assert.equal(providerVideo.status, 201);
     const shortService = await send('POST', '/api/provider/listings', {
