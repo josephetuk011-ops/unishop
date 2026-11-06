@@ -140,14 +140,17 @@ const catalog = [
 const providers: any[] = [];
 const serviceNiches = [
   'Barbing', 'Cleaning', 'Cooking', 'Hair dressing', 'Decorating', 'Grass clearing', 'Mechanic',
-  'Electrician', 'Plumber', 'Photographer', 'Makeup', 'Fashion designing', 'Manicure and pedicure', 'Therapist'
+  'Electrician', 'Plumber', 'Photographer', 'Makeup', 'Fashion designing', 'Manicure and pedicure', 'Therapist',
+  'Graphic design', 'Dry cleaning', 'Laundry and ironing', 'Phone repair', 'Event planning', 'Web and app design', 'Tutoring'
 ];
 const nicheImages: Record<string, string> = {
   'Barbing': 'photo-1503951914875-452162b0f3f1', 'Cleaning': 'photo-1581578731548-c64695cc6952', 'Cooking': 'photo-1556911220-bff31c812dba',
   'Hair dressing': 'photo-1560066984-138dadb4c035', 'Decorating': 'photo-1616486338812-3dadae4b4ace', 'Grass clearing': 'photo-1585320806297-9794b3e4eeae',
   'Mechanic': 'photo-1486262715619-67b85e0b08d3', 'Electrician': 'photo-1621905251189-08b45d6a269e', 'Plumber': 'photo-1607472586893-edb57bdc0e39',
   'Photographer': 'photo-1542038784456-1ea8e935640e', 'Makeup': 'photo-1522335789203-aabd1fc54bc9', 'Fashion designing': 'photo-1558618666-fcd25c85cd64',
-  'Manicure and pedicure': 'photo-1604654894610-df63bc536371', 'Therapist': 'photo-1544161515-4ab6ce6db874'
+  'Manicure and pedicure': 'photo-1604654894610-df63bc536371', 'Therapist': 'photo-1544161515-4ab6ce6db874',
+  'Graphic design': 'photo-1626785774573-4b799315345d', 'Dry cleaning': 'photo-1517677208171-0bc6725a3e60', 'Laundry and ironing': 'photo-1489274495757-95c7c837b101',
+  'Phone repair': 'photo-1581092918056-0c4c3acd3789', 'Event planning': 'photo-1511578314322-379afb476865', 'Web and app design': 'photo-1531403009284-440f080d1e12', 'Tutoring': 'photo-1606761568499-6d2451b23c66'
 };
 const dataPath = process.env.MARKETPLACE_DATA_PATH || path.join(__dirname, '..', '.data', 'marketplace.json');
 const uploadDirectory = process.env.UPLOADS_DIRECTORY || path.join(__dirname, '..', 'public', 'uploads');

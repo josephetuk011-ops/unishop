@@ -16,7 +16,9 @@ const serviceNiches = [
   ['Hair dressing', 'photo-1560066984-138dadb4c035'], ['Decorating', 'photo-1616486338812-3dadae4b4ace'], ['Grass clearing', 'photo-1585320806297-9794b3e4eeae'],
   ['Mechanic', 'photo-1486262715619-67b85e0b08d3'], ['Electrician', 'photo-1621905251189-08b45d6a269e'], ['Plumber', 'photo-1607472586893-edb57bdc0e39'],
   ['Photographer', 'photo-1542038784456-1ea8e935640e'], ['Makeup', 'photo-1522335789203-aabd1fc54bc9'], ['Fashion designing', 'photo-1558618666-fcd25c85cd64'],
-  ['Manicure and pedicure', 'photo-1604654894610-df63bc536371'], ['Therapist', 'photo-1544161515-4ab6ce6db874']
+  ['Manicure and pedicure', 'photo-1604654894610-df63bc536371'], ['Therapist', 'photo-1544161515-4ab6ce6db874'],
+  ['Graphic design', 'photo-1626785774573-4b799315345d'], ['Dry cleaning', 'photo-1517677208171-0bc6725a3e60'], ['Laundry and ironing', 'photo-1489274495757-95c7c837b101'],
+  ['Phone repair', 'photo-1581092918056-0c4c3acd3789'], ['Event planning', 'photo-1511578314322-379afb476865'], ['Web and app design', 'photo-1531403009284-440f080d1e12'], ['Tutoring', 'photo-1606761568499-6d2451b23c66']
 ];
 let activeNiche = 'All';
 let marketMode = 'all';
@@ -849,6 +851,7 @@ document.querySelectorAll('a[href="#services"], a[href="#providers"]').forEach((
 document.querySelector('#services')?.remove();
 if (currentUser?.name) document.querySelector('.account-button span:last-child').textContent = currentUser.name.split(' ')[0];
 if (localStorage.getItem('unishop-theme') === 'dark') document.body.classList.add('dark-theme');
+{ const welcome = document.querySelector('#welcome-strip'); if (welcome && !sessionToken) welcome.hidden = false; }
 if (new URLSearchParams(window.location.search).get('signin') && !sessionToken) { history.replaceState(null, '', '/'); openAuth('customer', 'login'); }
 fetch('/api/services').then((response) => response.ok ? response.json() : []).then((data) => {
   if (Array.isArray(data) && data.length) {
