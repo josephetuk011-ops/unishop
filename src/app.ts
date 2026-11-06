@@ -461,7 +461,7 @@ async function completePayment(reference: string, payment: any) {
       order.stockAdjusted = true;
       (order.items || []).forEach((item: any) => {
         const product = state.sellerProducts.find((entry) => entry.id === item.productId);
-        if (!product || product.stock === undefined || product.stock === null) return;
+        if (!product || product.preorder || product.stock === undefined || product.stock === null) return;
         const entry = Array.isArray(product.sizes) ? product.sizes.find((row: any) => row.label === item.size) : undefined;
         if (entry) entry.quantity = Math.max(0, entry.quantity - item.quantity);
         product.stock = Array.isArray(product.sizes) && product.sizes.length ? product.sizes.reduce((sum: number, row: any) => sum + row.quantity, 0) : Math.max(0, product.stock - item.quantity);
@@ -1264,7 +1264,19 @@ function parseStock(body: any): { stock?: number; sizes?: { label: string; quant
   return { stock: count(quantity) };
 }
 
+// A pre-order product is made after it is ordered, so it has no stock count and is never "sold out".
+function parsePreorder(body: any, existing?: any): { preorder?: boolean; preorderDays?: number } {
+  const { preorder, preorderDays } = body || {};
+  if (preorder === undefined && preorderDays === undefined) return {};
+  const on = preorder === undefined ? Boolean(existing?.preorder) : preorder === true || preorder === 'true';
+  if (!on) return { preorder: false };
+  const days = Number(preorderDays !== undefined && preorderDays !== '' ? preorderDays : existing?.preorderDays);
+  if (!Number.isInteger(days) || days < 1 || days > 180) fail(400, 'Enter how many days you will take to deliver after an order, from 1 to 180.');
+  return { preorder: true, preorderDays: days };
+}
+
 function availableFor(product: any, size?: string) {
+  if (product.preorder) return Infinity;
   if (product.stock === undefined || product.stock === null) return Infinity;
   if (Array.isArray(product.sizes) && product.sizes.length) return product.sizes.find((entry: any) => entry.label === size)?.quantity ?? 0;
   return product.stock;
@@ -1276,6 +1288,8 @@ app.post('/api/seller/products', (request: Request, response: Response) => {
   if (!hasCompleteBusinessProfile(user)) fail(409, 'Complete your public business profile before publishing a product.');
   const { name, category, description, price, image, images, video, videoDuration } = request.body || {};
   const stockFields = parseStock(request.body);
+  const preorderFields = parsePreorder(request.body);
+  if (preorderFields.preorder) { delete stockFields.stock; delete stockFields.sizes; }
   if (typeof name !== 'string' || name.trim().length < 3 || name.length > 100) fail(400, 'Enter a product name.');
   if (typeof category !== 'string' || !validProductCategories.has(category)) fail(400, 'Choose a valid product category.');
   if (typeof description !== 'string' || description.trim().length < 5) fail(400, 'Add a short product description.');
@@ -1285,7 +1299,7 @@ app.post('/api/seller/products', (request: Request, response: Response) => {
   if (!Array.isArray(productImages) || productImages.length < 1 || productImages.length > 3 || productImages.some((item) => typeof item !== 'string' || !uploadPath.test(item))) fail(400, 'Upload 1 to 3 product photos first.');
   if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.[a-z0-9]{2,5}$/i.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
-  const product = { id: `seller-${randomBytes(10).toString('hex')}`, userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), ...stockFields, image: productImages[0], images: productImages, video, videoDuration: video === undefined ? undefined : Number(videoDuration), rating: null, reviews: 0, createdAt: new Date().toISOString() };
+  const product = { id: `seller-${randomBytes(10).toString('hex')}`, userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), ...stockFields, ...(preorderFields.preorder ? preorderFields : {}), image: productImages[0], images: productImages, video, videoDuration: video === undefined ? undefined : Number(videoDuration), rating: null, reviews: 0, createdAt: new Date().toISOString() };
   state.sellerProducts.push(product);
   saveState();
   response.status(201).json({ product });
@@ -1302,6 +1316,7 @@ app.patch('/api/seller/products/:id', (request: Request, response: Response) => 
   if (description !== undefined && (typeof description !== 'string' || description.trim().length < 5 || description.length > 1000)) fail(400, 'Add a short product description.');
   if (price !== undefined && (!Number.isInteger(Number(price)) || Number(price) < 100 || Number(price) > 100000000)) fail(400, 'Enter a valid price in Naira.');
   const stockFields = parseStock(request.body);
+  const preorderFields = parsePreorder(request.body, product);
   const hasSizes = Array.isArray(product.sizes) && product.sizes.length > 0;
   let addition = 0;
   if (addQuantity !== undefined && addQuantity !== null && addQuantity !== '') {
@@ -1314,7 +1329,16 @@ app.patch('/api/seller/products/:id', (request: Request, response: Response) => 
   if (category !== undefined) product.category = category;
   if (description !== undefined) product.description = description.trim();
   if (price !== undefined) product.price = Number(price);
-  if (stockFields.stock !== undefined) {
+  if (preorderFields.preorder === true) {
+    product.preorder = true;
+    product.preorderDays = preorderFields.preorderDays;
+    delete product.stock;
+    delete product.sizes;
+  } else if (preorderFields.preorder === false) {
+    delete product.preorder;
+    delete product.preorderDays;
+  }
+  if (!product.preorder && stockFields.stock !== undefined) {
     product.stock = stockFields.stock;
     if (stockFields.sizes) product.sizes = stockFields.sizes; else delete product.sizes;
   } else if (addition > 0) {
@@ -1329,6 +1353,7 @@ app.patch('/api/seller/products/:id/stock', (request: Request, response: Respons
   const user = requireUser(request);
   const product = state.sellerProducts.find((item) => item.id === request.params.id && item.userId === user.id);
   if (!product) fail(404, 'Product not found.');
+  if (product.preorder) fail(400, 'Pre-order products do not use a stock count. Switch off pre-order first.');
   const fields = parseStock(request.body);
   if (fields.stock === undefined) fail(400, 'Enter the quantity available.');
   product.stock = fields.stock;
@@ -1730,7 +1755,8 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
       unitPrice: product.price,
       quantity,
       lineTotal: product.price * quantity,
-      service: false
+      service: false,
+      ...(product.preorder ? { preorder: true, preorderDays: product.preorderDays } : {})
     }));
     settlementLines = sellerSettlementLines(orderItems);
     totalNaira = orderItems.reduce((sum: number, item: any) => sum + item.lineTotal, 0) + 500;

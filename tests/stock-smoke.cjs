@@ -62,6 +62,23 @@ const server = app.listen(0, async () => {
     const shopPage = await fetch(`${base}/vendor.html?id=${sellerId}`).then((r) => r.text());
     assert.match(shopPage, /og:title" content="[^"]+ on Unishop"/, 'shop link has a share preview');
     assert.ok(!/<script>alert/.test(shopPage));
+    // pre-order products: choose pre-order, give delivery days, never sold out, no stock count
+    const base2 = { category: 'Fashion', description: 'Made to order for you.', price: 20000, image: '/uploads/shirt.jpg' };
+    assert.equal((await send('POST', '/api/seller/products', { ...base2, name: 'Custom agbada', preorder: true }, st)).status, 400, 'pre-order needs delivery days');
+    assert.equal((await send('POST', '/api/seller/products', { ...base2, name: 'Custom agbada', preorder: true, preorderDays: 0 }, st)).status, 400);
+    const pre = await send('POST', '/api/seller/products', { ...base2, name: 'Custom agbada', preorder: true, preorderDays: 14, quantity: 3 }, st);
+    assert.equal(pre.status, 201);
+    assert.equal(pre.data.product.preorder, true);
+    assert.equal(pre.data.product.preorderDays, 14);
+    assert.equal(pre.data.product.stock, undefined, 'pre-orders carry no stock count');
+    const preListed = (await send('GET', '/api/products')).data.find((item) => item.id === pre.data.product.id);
+    assert.equal(preListed.preorderDays, 14);
+    assert.equal((await send('PATCH', `/api/seller/products/${pre.data.product.id}/stock`, { quantity: 5 }, st)).status, 400);
+    assert.equal((await send('PATCH', `/api/seller/products/${pre.data.product.id}`, { preorderDays: 21 }, st)).data.product.preorderDays, 21);
+    assert.equal((await send('PATCH', `/api/seller/products/${pre.data.product.id}`, { preorderDays: 999 }, st)).status, 400);
+    const off = await send('PATCH', `/api/seller/products/${pre.data.product.id}`, { preorder: false, quantity: 4 }, st);
+    assert.equal(off.data.product.preorder, undefined);
+    assert.equal(off.data.product.stock, 4, 'switching off pre-order allows a stock count');
     // another account cannot edit this seller's product
     const intruder = await send('POST', '/api/auth/register', { name: 'Other Seller', username: 'otherseller1', email: 'other-seller1@example.com', password: 'marketplacepassword123', role: 'customer' });
     assert.equal((await send('PATCH', `/api/seller/products/${sneakerId}`, { price: 100 }, intruder.data.token)).status, 403);
@@ -77,6 +94,11 @@ const server = app.listen(0, async () => {
     assert.equal((await pay([{ id: shirt.id, quantity: 1 }])).status, 400);
     assert.equal((await pay([{ id: shirt.id, size: 'S', quantity: 3 }])).status, 409);
     assert.equal((await pay([{ id: shirt.id, size: 'M', quantity: 1 }, { id: shirt.id, size: 'M', quantity: 1 }])).status, 409);
+    const preProduct = (await send('POST', '/api/seller/products', { category: 'Fashion', description: 'Sewn after you order.', price: 15000, image: '/uploads/shirt.jpg', name: 'Sewn to order', preorder: true, preorderDays: 10 }, st)).data.product;
+    const preOrder = await pay([{ id: preProduct.id, quantity: 10 }]);
+    assert.equal(preOrder.status, 201, 'a pre-order product is never sold out: ' + JSON.stringify(preOrder.data));
+    const preOrderRecord = (await send('GET', `/api/orders/${preOrder.data.reference}`, undefined, bt)).data;
+    assert.equal(JSON.stringify(preOrderRecord).includes('"preorderDays":10'), true, 'the order records the delivery time');
     const order = await pay([{ id: shirt.id, size: 'S', quantity: 1 }, { id: plain.id, quantity: 2 }]);
     assert.equal(order.status, 201);
     let list = (await send('GET', '/api/products')).data;

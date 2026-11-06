@@ -32,6 +32,7 @@ function toast(message) {
 }
 const hasSizes = () => Array.isArray(product.sizes) && product.sizes.length > 0;
 function available() {
+  if (product.preorder) return Infinity;
   if (product.stock === undefined || product.stock === null) return Infinity;
   if (hasSizes()) return product.sizes.find((row) => row.label === chosenSize)?.quantity ?? 0;
   return product.stock;
@@ -63,8 +64,9 @@ function render() {
   const slides = gallery.map((photo) => ({ type: 'image', src: photo }));
   if (product.video) slides.push({ type: 'video', src: product.video });
   const brand = product.brandProfile;
-  const out = product.stock === 0;
-  const stockLine = product.stock === undefined || product.stock === null ? '' : out ? '<p class="pp-stock out">Sold out</p>' : `<p class="pp-stock">${hasSizes() ? 'In stock' : `${product.stock} available`}</p>`;
+  const out = !product.preorder && product.stock === 0;
+  const preorderDays = Number(product.preorderDays);
+  const stockLine = product.preorder ? `<p class="pp-preorder"><strong>Pre-order</strong> · Delivered in ${preorderDays} day${preorderDays === 1 ? '' : 's'} after you order. You pay now and the vendor prepares it for you.</p>` : product.stock === undefined || product.stock === null ? '' : out ? '<p class="pp-stock out">Sold out</p>' : `<p class="pp-stock">${hasSizes() ? 'In stock' : `${product.stock} available`}</p>`;
   const ratingLine = product.rating ? `<strong>★ ${Number(product.rating).toFixed(1)}/5</strong> · ${product.reviews || 0} customer ratings` : 'New listing · No ratings yet';
   const description = product.description || defaultDescriptions[product.id] || 'A locally listed product from a vendor or brand in Uyo. Contact the vendor or brand for more details.';
   const related = relatedProducts();
