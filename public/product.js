@@ -1,5 +1,13 @@
 const root = document.querySelector('#pp-root');
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const specLabels = { brand: 'Brand', deviceType: 'Kind of device', model: 'Model', condition: 'Condition', storage: 'Storage', ram: 'RAM', battery: 'Battery', batteryLife: 'Battery life', screen: 'Screen size', camera: 'Main camera', network: 'Network', sim: 'SIM', colour: 'Colour', warranty: 'Warranty', processor: 'Processor', storageType: 'Storage type', capacity: 'Battery capacity', connectivity: 'Connectivity', gender: 'For', style: 'Style', material: 'Fabric or material', madeToMeasure: 'Sewing option', sewingDays: 'Time to sew a custom order', chest: 'Chest or bust', waist: 'Waist', hip: 'Hip', shoulder: 'Shoulder', sleeve: 'Sleeve length', length: 'Length', inseam: 'Inseam', care: 'Care', footLength: 'Foot length it fits', width: 'Width' };
+const specUnits = { battery: ' mAh', screen: ' inches', camera: ' MP', capacity: ' mAh', batteryLife: '', sewingDays: ' days', chest: ' in', waist: ' in', hip: ' in', shoulder: ' in', sleeve: ' in', length: ' in', inseam: ' in', footLength: ' cm', width: ' in' };
+function specTable(product) {
+  const rows = Object.entries(product.specs || {}).filter(([key]) => specLabels[key]);
+  if (!rows.length) return '';
+  const unit = (key, value) => key === 'batteryLife' && typeof value === 'number' ? ' hours' : (specUnits[key] || '');
+  return `<section class="pp-section"><h2>Specifications</h2><table class="pp-specs"><tbody>${rows.map(([key, value]) => `<tr><th>${esc(specLabels[key])}</th><td>${esc(String(value))}${unit(key, value)}</td></tr>`).join('')}</tbody></table></section>`;
+}
 const img = (id, width = 900) => !id ? '' : id.startsWith('/') || /^https:\/\/res\.cloudinary\.com\//.test(id) ? id : `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=80`;
 const money = (n) => `₦${Number(n).toLocaleString('en-NG')}`;
 const stars = (n) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
@@ -94,6 +102,7 @@ function render() {
       </div>
     </div>
     <section class="pp-section"><h2>Product details</h2><p class="pp-desc">${esc(description)}</p></section>
+    ${specTable(product)}
     ${fromShop.length ? `<section class="pp-section"><h2>More from ${esc(brand?.businessName || product.seller)}</h2><div class="pp-grid">${fromShop.map(card).join('')}</div></section>` : ''}
     ${related.length ? `<section class="pp-section"><h2>You may also like</h2><div class="pp-grid">${related.map(card).join('')}</div></section>` : ''}
     <div class="pp-sticky"><div class="pp-actions" style="margin:0;flex:1">${buttons}</div></div>`;
