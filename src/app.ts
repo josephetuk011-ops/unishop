@@ -218,6 +218,59 @@ function looksLikeVideo(file: string) {
     return true;
   } catch { return false; }
 }
+type CloudinaryConfig = { cloud: string; key: string; secret: string };
+function cloudinaryConfig(): CloudinaryConfig | null {
+  const url = process.env.CLOUDINARY_URL?.trim();
+  if (url) {
+    const match = /^cloudinary:\/\/([^:@\s]+):([^@\s]+)@([\w-]+)$/.exec(url);
+    if (match) return { key: match[1], secret: match[2], cloud: match[3] };
+  }
+  const cloud = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+  const key = process.env.CLOUDINARY_API_KEY?.trim();
+  const secret = process.env.CLOUDINARY_API_SECRET?.trim();
+  return cloud && key && secret ? { cloud, key, secret } : null;
+}
+// Stores a validated upload in Cloudinary, compressed on arrival and on delivery.
+// Returns the delivery URL, or null (and keeps the local file) when Cloudinary is not configured or fails.
+async function uploadToCloudinary(file: string, kind: 'image' | 'video'): Promise<string | null> {
+  const config = cloudinaryConfig();
+  if (!config) return null;
+  try {
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const params: Record<string, string> = {
+      folder: 'unishop',
+      timestamp,
+      transformation: kind === 'image' ? 'c_limit,w_1600,h_1600,q_auto:good' : 'c_limit,w_720,h_1280,q_auto'
+    };
+    const toSign = Object.keys(params).sort().map((name) => `${name}=${params[name]}`).join('&');
+    const form = new FormData();
+    Object.entries(params).forEach(([name, value]) => form.append(name, value));
+    form.append('api_key', config.key);
+    form.append('signature', crypto.createHash('sha1').update(toSign + config.secret).digest('hex'));
+    form.append('file', new Blob([fs.readFileSync(file)]), path.basename(file));
+    const base = process.env.CLOUDINARY_API_BASE || 'https://api.cloudinary.com';
+    const result = await fetch(`${base}/v1_1/${config.cloud}/${kind}/upload`, { method: 'POST', body: form, signal: AbortSignal.timeout(60000) });
+    const body: any = await result.json().catch(() => ({}));
+    if (!result.ok || typeof body.secure_url !== 'string') throw new Error(body?.error?.message || `Cloudinary answered ${result.status}`);
+    const delivery = kind === 'image' ? 'f_auto,q_auto' : 'f_auto,q_auto,vc_auto';
+    const secureUrl = body.secure_url.replace('/upload/', `/upload/${delivery}/`);
+    fs.unlink(file, () => {});
+    return secureUrl;
+  } catch (error: any) {
+    console.error('Cloudinary upload failed, keeping the file on the volume:', error?.message || error);
+    return null;
+  }
+}
+// A media reference is either a local /uploads file or a file in this shop's own Cloudinary account.
+function isMediaRef(value: unknown, kind: 'image' | 'video'): value is string {
+  if (typeof value !== 'string' || value.length > 600) return false;
+  if (/^\/uploads\/[\w.-]+$/.test(value) && (kind === 'image' || /\.[a-z0-9]{2,5}$/i.test(value))) return true;
+  const cloud = cloudinaryConfig()?.cloud;
+  if (!cloud) return false;
+  const prefix = `https://res.cloudinary.com/${cloud}/${kind}/upload/`;
+  return value.startsWith(prefix) && /^[\w.,:\/-]+$/.test(value.slice(prefix.length));
+}
+const isLocalUpload = (value?: string) => Boolean(value?.startsWith('/uploads/') || (value && isMediaRef(value, 'image')));
 const jwtSecret = process.env.JWT_SECRET || 'unishop-development-only-change-this-secret';
 const adminIdentity: User = { id: 'railway-admin', name: 'Unishop Administrator', username: 'admin', email: 'admin@unishop.local', role: 'admin', passwordHash: '', createdAt: '2026-01-01T00:00:00.000Z' };
 const paystackSecret = process.env.PAYSTACK_SECRET_KEY || '';
@@ -362,7 +415,7 @@ function publicBusinessProfile(userId: string | undefined) {
 }
 
 function hasCompleteBusinessProfile(user: User) {
-  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && user.profileImage?.startsWith('/uploads/') && user.ceoImage?.startsWith('/uploads/') && (!ninEnabled() || !requiresNin(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
+  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && isLocalUpload(user.profileImage) && isLocalUpload(user.ceoImage) && (!ninEnabled() || !requiresNin(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
 
 function legacyUsername(user: User) {
@@ -635,7 +688,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'blob:', 'https://images.unsplash.com', 'https://images.pexels.com'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://images.unsplash.com', 'https://images.pexels.com', 'https://res.cloudinary.com'],
+      mediaSrc: ["'self'", 'blob:', 'https://res.cloudinary.com'],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
@@ -1085,21 +1139,22 @@ app.get('/api/services', (_request, response) => {
 app.post('/api/uploads/portfolio', (request: Request, response: Response, next: NextFunction) => {
   const user = authenticatedUser(request);
   if (!user || !['provider', 'seller', 'dispatch'].includes(user.role)) return response.status(403).json({ error: 'Sign in as a seller, service provider or dispatch rider to upload photos.' });
-  imageUpload.array('images', 6)(request, response, (error: any) => {
+  imageUpload.array('images', 6)(request, response, async (error: any) => {
     if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Each photo must be 5 MB or smaller.' : error.message || 'The photos could not be uploaded.' });
     const files = (request.files || []) as Express.Multer.File[];
     if (files.some((file) => !looksLikeImage(file.path))) {
       files.forEach((file) => fs.unlink(file.path, () => {}));
       return response.status(400).json({ error: 'One of the files is not a real JPG, PNG or WebP image.' });
     }
-    response.status(201).json({ images: files.map((file) => `/uploads/${file.filename}`) });
+    const images = await Promise.all(files.map(async (file) => (await uploadToCloudinary(file.path, 'image')) || `/uploads/${file.filename}`));
+    response.status(201).json({ images });
   });
 });
 
 app.post(['/api/uploads/short-video', '/api/uploads/product-video'], (request: Request, response: Response) => {
   const user = authenticatedUser(request);
   if (!user || !['seller', 'provider'].includes(user.role)) return response.status(403).json({ error: 'Sign in as a vendor or service provider to upload short videos.' });
-  productVideoUpload.single('video')(request, response, (error: any) => {
+  productVideoUpload.single('video')(request, response, async (error: any) => {
     if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Video must be under 2 MB.' : error.message || 'The video could not be uploaded.' });
     if (!request.file) return response.status(400).json({ error: 'Choose a short video.' });
     if (!looksLikeVideo(request.file.path)) {
@@ -1111,7 +1166,8 @@ app.post(['/api/uploads/short-video', '/api/uploads/product-video'], (request: R
       fs.unlink(request.file.path, () => {});
       return response.status(400).json({ error: 'Short video must be 30 seconds or less.' });
     }
-    response.status(201).json({ video: `/uploads/${request.file.filename}`, videoDuration });
+    const video = (await uploadToCloudinary(request.file.path, 'video')) || `/uploads/${request.file.filename}`;
+    response.status(201).json({ video, videoDuration });
   });
 });
 
@@ -1220,8 +1276,8 @@ app.post('/api/provider/listings', (request: Request, response: Response) => {
   if (typeof title !== 'string' || title.trim().length < 3 || title.length > 100) fail(400, 'Enter a service title.');
   if (typeof description !== 'string' || description.trim().length < 10 || description.length > 1500) fail(400, 'Describe your service in at least 10 characters.');
   if (!Number.isInteger(Number(price)) || Number(price) < 500 || Number(price) > 100000000) fail(400, 'Enter a valid price in Naira.');
-  if (!Array.isArray(portfolio) || portfolio.length < 1 || portfolio.length > 6 || portfolio.some((image) => typeof image !== 'string' || !/^\/uploads\/[\w.-]+$/.test(image))) fail(400, 'Upload 1 to 6 work photos first.');
-  if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.[a-z0-9]{2,5}$/i.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
+  if (!Array.isArray(portfolio) || portfolio.length < 1 || portfolio.length > 6 || portfolio.some((image) => !isMediaRef(image, 'image'))) fail(400, 'Upload 1 to 6 work photos first.');
+  if (video !== undefined && (!isMediaRef(video, 'video') || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
   const listing = { id: randomBytes(12).toString('hex'), userId: user.id, provider: user.name, businessName: user.businessName, niche, title: title.trim(), description: description.trim(), price: Number(price), neighbourhood: 'Uyo, Akwa Ibom', portfolio, video, videoDuration: video === undefined ? undefined : Number(videoDuration), createdAt: new Date().toISOString() };
   state.serviceListings.push(listing);
@@ -1294,10 +1350,9 @@ app.post('/api/seller/products', (request: Request, response: Response) => {
   if (typeof category !== 'string' || !validProductCategories.has(category)) fail(400, 'Choose a valid product category.');
   if (typeof description !== 'string' || description.trim().length < 5) fail(400, 'Add a short product description.');
   if (!Number.isInteger(Number(price)) || Number(price) < 100 || Number(price) > 100000000) fail(400, 'Enter a valid price in Naira.');
-  const uploadPath = /^\/uploads\/[\w.-]+$/;
   const productImages: string[] = images !== undefined ? images : image !== undefined ? [image] : [];
-  if (!Array.isArray(productImages) || productImages.length < 1 || productImages.length > 3 || productImages.some((item) => typeof item !== 'string' || !uploadPath.test(item))) fail(400, 'Upload 1 to 3 product photos first.');
-  if (video !== undefined && (typeof video !== 'string' || !/^\/uploads\/[\w.-]+\.[a-z0-9]{2,5}$/i.test(video) || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
+  if (!Array.isArray(productImages) || productImages.length < 1 || productImages.length > 3 || productImages.some((item) => !isMediaRef(item, 'image'))) fail(400, 'Upload 1 to 3 product photos first.');
+  if (video !== undefined && (!isMediaRef(video, 'video') || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
   const product = { id: `seller-${randomBytes(10).toString('hex')}`, userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), ...stockFields, ...(preorderFields.preorder ? preorderFields : {}), image: productImages[0], images: productImages, video, videoDuration: video === undefined ? undefined : Number(videoDuration), rating: null, reviews: 0, createdAt: new Date().toISOString() };
   state.sellerProducts.push(product);
@@ -1631,9 +1686,9 @@ app.patch('/api/profile', (request: Request, response: Response) => {
     position: z.string().trim().min(2).max(80),
     placeOfOperation: z.string().trim().min(2).max(120),
     aboutMe: z.string().trim().min(20).max(1000),
-    profileImage: z.string().regex(/^\/uploads\/[\w.-]+$/),
-    ceoImage: z.string().regex(/^\/uploads\/[\w.-]+$/, 'Upload a photo of the owner or CEO.'),
-    teamImages: z.array(z.string().regex(/^\/uploads\/[\w.-]+$/)).max(6).optional()
+    profileImage: z.string().refine((v) => isMediaRef(v, 'image')),
+    ceoImage: z.string().refine((v) => isMediaRef(v, 'image'), 'Upload a photo of the owner or CEO.'),
+    teamImages: z.array(z.string().refine((v) => isMediaRef(v, 'image'))).max(6).optional()
   });
   const parsed = profileSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
