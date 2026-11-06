@@ -24,7 +24,7 @@ let activeNiche = 'All';
 let marketMode = 'all';
 
 const formatPrice = (amount) => `₦${amount.toLocaleString('en-NG')}`;
-const imageUrl = (id, width = 640) => id?.startsWith('/') ? id : `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=80`;
+const imageUrl = (id, width = 640) => id?.startsWith('/') || /^https:\/\/res\.cloudinary\.com\//.test(id || '') ? id : `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=80`;
 const readStorage = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; }
 };

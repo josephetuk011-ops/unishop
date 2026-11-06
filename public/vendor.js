@@ -1,6 +1,6 @@
 const root = document.querySelector('#vendor-root');
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const img = (id, width = 480) => !id ? '' : id.startsWith('/') ? id : `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=80`;
+const img = (id, width = 480) => !id ? '' : id.startsWith('/') || /^https:\/\/res\.cloudinary\.com\//.test(id) ? id : `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=80`;
 const money = (n) => `₦${Number(n).toLocaleString('en-NG')}`;
 const stars = (n) => '★'.repeat(Math.round(n)) + '☆'.repeat(5 - Math.round(n));
 const id = new URLSearchParams(location.search).get('id') || '';
