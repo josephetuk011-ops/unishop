@@ -32,7 +32,9 @@ const cloudinary = http.createServer(async (req, res) => {
 });
 
 cloudinary.listen(0, () => {
-  process.env.CLOUDINARY_URL = 'cloudinary://key123:secretxyz@democloud';
+  process.env.cloud_name = 'democloud';
+  process.env.api_key = 'key123';
+  process.env.api_secret = 'secretxyz';
   process.env.CLOUDINARY_API_BASE = `http://127.0.0.1:${cloudinary.address().port}`;
   require('ts-node/register');
   const app = require('../src/app').default;

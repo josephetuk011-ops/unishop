@@ -225,9 +225,9 @@ function cloudinaryConfig(): CloudinaryConfig | null {
     const match = /^cloudinary:\/\/([^:@\s]+):([^@\s]+)@([\w-]+)$/.exec(url);
     if (match) return { key: match[1], secret: match[2], cloud: match[3] };
   }
-  const cloud = process.env.CLOUDINARY_CLOUD_NAME?.trim();
-  const key = process.env.CLOUDINARY_API_KEY?.trim();
-  const secret = process.env.CLOUDINARY_API_SECRET?.trim();
+  const cloud = (process.env.CLOUDINARY_CLOUD_NAME || process.env.cloud_name)?.trim();
+  const key = (process.env.CLOUDINARY_API_KEY || process.env.api_key)?.trim();
+  const secret = (process.env.CLOUDINARY_API_SECRET || process.env.api_secret)?.trim();
   return cloud && key && secret ? { cloud, key, secret } : null;
 }
 // Stores a validated upload in Cloudinary, compressed on arrival and on delivery.
