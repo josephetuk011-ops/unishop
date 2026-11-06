@@ -67,6 +67,7 @@ function shortOverlay(seller, title) {
 }
 
 function stockBadge(product) {
+  if (product.preorder) return `<span class="stock-note preorder-note">Delivered in ${Number(product.preorderDays)} day${Number(product.preorderDays) === 1 ? '' : 's'}</span>`;
   if (product.stock === undefined || product.stock === null) return '';
   if (product.stock === 0) return '<span class="stock-note sold-out">Sold out</span>';
   return product.stock <= 5 ? `<span class="stock-note">${product.stock} left</span>` : '';
@@ -163,7 +164,7 @@ function renderProducts() {
   const groupHeading = (label, count, kind) => `<h3 class="category-heading" data-group="${escapeShortText(kind)}"><span>${escapeShortText(label)}</span><small>${count} ${count === 1 ? 'listing' : 'listings'}</small></h3>`;
   const goodsMarkup = marketMode === 'services' ? [] : goods.map((product, index) => `
     <article class="product-card goods-card" style="animation-delay:${index * 35}ms">
-      <div class="product-image-wrap"><img class="product-image" src="${imageUrl(product.image)}" alt="${product.name}" loading="lazy"><button class="product-open-image" data-product-detail="${product.id}" aria-label="View ${product.name} details"></button><span class="product-badge ${product.category === 'Beauty' ? 'coral' : ''}">${product.badge || 'UYO SHOP'}</span>${product.video ? '<span class="product-video-badge">▶ VIDEO</span>' : ''}<button class="save-button ${saved.has(product.id) ? 'saved' : ''}" data-save="${product.id}" aria-label="${saved.has(product.id) ? 'Remove from' : 'Save to'} favourites">${saved.has(product.id) ? '♥' : '♡'}</button></div>
+      <div class="product-image-wrap"><img class="product-image" src="${imageUrl(product.image)}" alt="${product.name}" loading="lazy"><button class="product-open-image" data-product-detail="${product.id}" aria-label="View ${product.name} details"></button><span class="product-badge ${product.preorder || product.category === 'Beauty' ? 'coral' : ''}">${product.preorder ? 'PRE-ORDER' : (product.badge || 'UYO SHOP')}</span>${product.video ? '<span class="product-video-badge">▶ VIDEO</span>' : ''}<button class="save-button ${saved.has(product.id) ? 'saved' : ''}" data-save="${product.id}" aria-label="${saved.has(product.id) ? 'Remove from' : 'Save to'} favourites">${saved.has(product.id) ? '♥' : '♡'}</button></div>
       <div class="product-details"><div class="product-vendor">${product.userId ? `<a class="vendor-link" href="/vendor.html?id=${encodeURIComponent(product.userId)}">${product.seller}</a>` : product.seller}</div><h3 class="product-name"><button class="product-title-open" data-product-detail="${product.id}">${product.name}</button></h3><div class="product-bottom"><span class="product-price">${formatPrice(product.price)}</span>${product.rating ? `<span class="product-rating"><b>★</b> ${Number(product.rating).toFixed(1)}/5 <span>(${product.reviews || 0})</span></span>` : '<span class="product-rating">★ Not rated yet</span>'}${stockBadge(product)}<button class="add-button" data-add="${product.id}" aria-label="Add ${product.name} to bag"${product.stock === 0 ? ' disabled' : ''}>+</button></div></div>
     </article>`);
   const services = providers.filter((provider) => {
@@ -188,13 +189,23 @@ function renderProducts() {
     });
     return output;
   };
-  const groupedGoods = withHeadings(marketMode === 'services' ? [] : goods, goodsMarkup, (key) => key === '__new' ? 'New from vendors' : (categoryLabels[key] || key), (product) => isVendorProduct(product) ? '__new' : product.category, 'goods');
-  const serviceItems = marketMode === 'goods' ? [] : [...services].sort((left, right) => String(left.niche || left.category || left.trade || '').localeCompare(String(right.niche || right.category || right.trade || '')));
+  // Items added by real vendors and providers come first, newest on top; the built-in demo listings follow.
+  const isRealService = (provider) => Boolean(provider.userId);
+  const serviceAddedAt = (provider) => Date.parse(provider.createdAt || '') || 0;
   const serviceMarkupByItem = new Map(services.map((provider, index) => [provider, serviceMarkup[index]]));
-  const groupedServices = withHeadings(serviceItems, serviceItems.map((provider) => serviceMarkupByItem.get(provider)), (key) => key, (provider) => provider.niche || provider.category || provider.trade, 'services');
+  const realGoods = marketMode === 'services' ? [] : goods.filter(isVendorProduct);
+  const demoGoods = marketMode === 'services' ? [] : goods.filter((product) => !isVendorProduct(product));
+  const realServices = marketMode === 'goods' ? [] : services.filter(isRealService).sort((left, right) => serviceAddedAt(right) - serviceAddedAt(left));
+  const demoServices = marketMode === 'goods' ? [] : services.filter((provider) => !isRealService(provider)).sort((left, right) => String(left.niche || left.category || left.trade || '').localeCompare(String(right.niche || right.category || right.trade || '')));
+  const goodsMarkupByItem = new Map(goods.map((product, index) => [product, goodsMarkup[index]]));
+  const newest = [...realGoods.map((item) => ({ item, at: addedAt(item), html: goodsMarkupByItem.get(item) })), ...realServices.map((item) => ({ item, at: serviceAddedAt(item), html: serviceMarkupByItem.get(item) }))].sort((left, right) => right.at - left.at);
+  const topLabel = marketMode === 'services' ? 'New from service providers' : marketMode === 'goods' ? 'New from vendors' : 'New from vendors and providers';
+  const groupedNew = newest.length ? [groupHeading(topLabel, newest.length, 'new'), ...newest.map((entry) => entry.html)] : [];
+  const groupedGoods = withHeadings(demoGoods, demoGoods.map((product) => goodsMarkupByItem.get(product)), (key) => categoryLabels[key] || key, (product) => product.category, 'goods');
+  const groupedServices = withHeadings(demoServices, demoServices.map((provider) => serviceMarkupByItem.get(provider)), (key) => key, (provider) => provider.niche || provider.category || provider.trade, 'services');
   const listings = [...goodsMarkup, ...serviceMarkup];
   document.querySelector('.category-pill[data-category="All"] span').textContent = String(listings.length);
-  productGrid.innerHTML = [...groupedGoods, ...groupedServices].join('') || `<p class="no-results">${marketMode === 'services' && activeNiche !== 'All' ? `No ${activeNiche.toLowerCase()} listings found yet.` : 'No listings match that search. Try another category.'}</p>`;
+  productGrid.innerHTML = [...groupedNew, ...groupedGoods, ...groupedServices].join('') || `<p class="no-results">${marketMode === 'services' && activeNiche !== 'All' ? `No ${activeNiche.toLowerCase()} listings found yet.` : 'No listings match that search. Try another category.'}</p>`;
   const nicheGrid = document.querySelector('#marketplace-niches');
   nicheGrid.innerHTML = serviceNiches.map(([name, image]) => `<button class="service-niche-card ${activeNiche === name ? 'selected' : ''}" data-service-niche="${name}"><img src="${imageUrl(image, 640)}" alt="${name} service in Uyo" loading="lazy"><span>${name}</span><b>Explore ↗</b></button>`).join('');
   nicheGrid.hidden = marketMode !== 'services';
@@ -310,7 +321,7 @@ function renderCart() {
   document.querySelector('#cart-items').innerHTML = entries.map(([id, quantity]) => {
     const parts = cartParts(id);
     const product = products.find((item) => item.id === parts.id);
-    return `<article class="cart-item"><img src="${imageUrl(product.image, 160)}" alt=""><div><div class="cart-item-name">${product.name}${parts.size ? ` · ${escapeShortText(parts.size)}` : ''}</div><div class="cart-item-vendor">${product.seller}</div><div class="quantity-controls"><button data-quantity="${id}" data-change="-1" aria-label="Remove one ${product.name}">−</button><span>${quantity}</span><button data-quantity="${id}" data-change="1" aria-label="Add one ${product.name}">+</button></div></div><div class="cart-item-price">${formatPrice(product.price * quantity)}</div></article>`;
+    return `<article class="cart-item"><img src="${imageUrl(product.image, 160)}" alt=""><div><div class="cart-item-name">${product.name}${parts.size ? ` · ${escapeShortText(parts.size)}` : ''}</div><div class="cart-item-vendor">${product.seller}</div>${product.preorder ? `<div class="stock-note preorder-note">Pre-order · delivered in ${Number(product.preorderDays)} day${Number(product.preorderDays) === 1 ? '' : 's'}</div>` : ''}<div class="quantity-controls"><button data-quantity="${id}" data-change="-1" aria-label="Remove one ${product.name}">−</button><span>${quantity}</span><button data-quantity="${id}" data-change="1" aria-label="Add one ${product.name}">+</button></div></div><div class="cart-item-price">${formatPrice(product.price * quantity)}</div></article>`;
   }).join('');
   document.querySelector('#cart-empty').classList.toggle('visible', totalItems === 0);
   document.querySelector('#cart-summary').style.display = totalItems ? '' : 'none';
