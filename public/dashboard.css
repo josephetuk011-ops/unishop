@@ -32,3 +32,7 @@
 .store-link{margin-bottom:16px}.store-link-row{display:flex;gap:8px;margin:8px 0}.store-link-row input{flex:1;min-width:0;padding:10px 12px;border:1px solid var(--line,#d9e0ee);border-radius:8px;font:inherit;background:transparent;color:inherit}a.secondary-button{text-decoration:none;display:inline-flex;align-items:center}
 .team-preview{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.team-preview img{width:72px;height:72px;object-fit:cover;border-radius:8px}
 .availability-field{border:1px solid var(--line,#d9e0ee);border-radius:10px;padding:10px 12px}.availability-field legend{font-weight:700;padding:0 6px}.radio-row{display:flex;gap:8px;align-items:center;margin:6px 0;cursor:pointer}.radio-row input{width:auto}.preorder-days[hidden],.stock-field[hidden]{display:none}
+
+.spec-box{border:1px solid #dfe3ea;border-radius:10px;padding:14px 16px;margin:0}.spec-box legend{font-weight:700;padding:0 8px;color:#1f3a8a}.spec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.form-grid>[data-spec-fields]{grid-column:1/-1}.form-grid>[data-spec-fields]:empty{display:none}
+.spec-grid{align-items:end}
