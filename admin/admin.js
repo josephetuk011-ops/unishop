@@ -1,13 +1,14 @@
 const tokenKey = 'unishop-admin-token';
 const pageSize = 50;
-const labels = { overview: 'Marketplace overview', users: 'Accounts', orders: 'Orders', bookings: 'Bookings', listings: 'Listings', payouts: 'Payouts', audit: 'Admin activity' };
+const labels = { overview: 'Marketplace overview', users: 'Accounts', orders: 'Orders', bookings: 'Bookings', listings: 'Listings', payouts: 'Payouts', audit: 'Admin activity', chats: 'Chats' };
 const descriptions = {
   users: 'Review customer, seller, service provider and dispatch accounts. Suspensions delist sellers/providers and block their access.',
   orders: 'Marketplace order ledger, including customer, items, payment and delivery details.',
   bookings: 'Service requests, payment progress, provider and customer details.',
   listings: 'All product and service listings with current account availability.',
   payouts: 'Marketplace payout records and account ownership. Bank credentials are not exposed.',
-  audit: 'Sign-ins and administrator actions recorded by the marketplace.'
+  audit: 'Sign-ins and administrator actions recorded by the marketplace.',
+  chats: 'Every negotiation between customers and service providers, including messages that were blocked for sharing contact details. Open a chat to read it.'
 };
 let currentView = 'overview';
 let currentOffset = 0;
@@ -124,7 +125,7 @@ function trackingCell(record) {
 function recordCells(record) {
   if (currentView === 'users') {
     const accountStatus = record.suspendedAt ? status('suspended') : status('active');
-    const action = ['seller', 'provider'].includes(record.role)
+    const action = ['seller', 'provider', 'customer'].includes(record.role)
       ? `<button class="table-action ${record.suspendedAt ? 'restore' : ''}" data-moderate-user="${escapeHtml(record.id)}" data-suspended="${Boolean(record.suspendedAt)}">${record.suspendedAt ? 'Restore' : 'Suspend'}</button>`
       : '—';
     return `<td>${cell(record.name, record.businessName || record.niche || '')}</td><td>${cell(record.email, record.ninLast4 ? `${record.username} · NIN ••••••• ${record.ninLast4} (${record.ninStatus || 'pending'})` : record.username)}</td><td>${status(record.role)}</td><td>${accountStatus}${record.suspensionReason ? `<small>${escapeHtml(record.suspensionReason)}</small>` : ''}</td><td>${escapeHtml(formatDate(record.createdAt))}</td><td>${action}</td>`;
@@ -140,6 +141,9 @@ function recordCells(record) {
     const name = record.name || record.title;
     return `<td>${status(record.listingType)}</td><td>${cell(name, record.category || record.niche)}</td><td>${cell(record.ownerName, record.ownerRole)}</td><td>${escapeHtml(formatMoney(record.price))}</td><td>${record.isSuspended ? status('suspended') : status('active')}</td><td>${escapeHtml(formatDate(record.createdAt))}</td>`;
   }
+  if (currentView === 'chats') {
+    return `<td>${cell(record.listingTitle, formatDate(record.createdAt))}</td><td>${cell(record.customerName, record.customerEmail)}</td><td>${escapeHtml(record.providerName)}</td><td>${cell(`${record.messageCount} messages`, record.lastMessage ? record.lastMessage.slice(0, 70) : '')}</td><td>${status(record.status)}${record.violations ? `<br>${status('suspended')} ${record.violations} blocked` : ''}${record.offerNaira ? `<br><small>Offer ${escapeHtml(formatMoney(record.offerNaira))}</small>` : ''}</td><td><button class="table-action" data-open-chat="${escapeHtml(record.id)}">Read chat</button></td>`;
+  }
   if (currentView === 'payouts') {
     return `<td>${cell(record.reference, formatDate(record.createdAt))}</td><td>${cell(record.ownerName, record.ownerEmail)}</td><td>${status(record.ownerRole)}</td><td>${escapeHtml(formatMoney(record.amountNaira))}</td><td>${status(record.status)}</td>`;
   }
@@ -151,6 +155,7 @@ function headersForView() {
   if (currentView === 'orders') return ['Order', 'Customer and delivery', 'Items', 'Total', 'Payment', 'Delivery tracking'];
   if (currentView === 'bookings') return ['Service', 'Customer', 'Requested time', 'Price', 'Booking', 'Payment'];
   if (currentView === 'listings') return ['Type', 'Listing', 'Account owner', 'Price', 'Visibility', 'Created'];
+  if (currentView === 'chats') return ['Service and last activity', 'Customer', 'Service provider', 'Messages', 'Status', 'Chat'];
   if (currentView === 'payouts') return ['Transfer', 'Account owner', 'Role', 'Amount', 'Status'];
   return ['Admin event', 'Details'];
 }
@@ -209,6 +214,7 @@ function openModeration(userId, suspended) {
 
 function closeDialog() {
   document.querySelector('#moderation-dialog').hidden = true;
+  document.querySelector('#chat-dialog').hidden = true;
 }
 
 async function refresh() {
@@ -265,6 +271,21 @@ function bindEvents() {
       track.disabled = true;
       try { await api(`/api/admin/orders/${encodeURIComponent(track.dataset.trackOrder)}/tracking`, { method: 'PATCH', body: JSON.stringify({ status: track.dataset.trackStatus }) }); await loadRecords(); notify('Tracking updated. The customer was notified.'); }
       catch (error) { notify(error.message); track.disabled = false; }
+      return;
+    }
+    const openChat = event.target.closest('[data-open-chat]');
+    if (openChat) {
+      try {
+        const data = await api(`/api/admin/chats/${encodeURIComponent(openChat.dataset.openChat)}`);
+        document.querySelector('#chat-title').textContent = `${data.conversation.customerName} and ${data.conversation.providerName}`;
+        document.querySelector('#chat-subtitle').textContent = `${data.conversation.listingTitle} · ${data.conversation.status}${data.conversation.offerNaira ? ` · offer ${formatMoney(data.conversation.offerNaira)}` : ''}`;
+        const external = (url) => /^https:\/\/res\.cloudinary\.com\//.test(url) ? url : '';
+        document.querySelector('#chat-log').innerHTML = data.messages.map((message) => {
+          const attachment = message.media ? (external(message.media.url) ? `<a href="${escapeHtml(message.media.url)}" target="_blank" rel="noopener">Open ${escapeHtml(message.media.kind)}</a>` : `<em>${escapeHtml(message.media.kind)} stored on the marketplace server (${escapeHtml(message.media.url)})</em>`) : '';
+          return `<div class="chat-entry${message.violation ? ' chat-violation' : ''}"><div class="chat-meta"><strong>${escapeHtml(message.senderName)}</strong><span>${escapeHtml(formatDate(message.createdAt))}</span>${message.violation ? `<b>BLOCKED: shared ${escapeHtml(message.violationKind || 'contact details')}</b>` : ''}</div><p>${escapeHtml(message.kind === 'offer' || message.kind === 'system' ? message.text : message.text || '')}</p>${attachment}</div>`;
+        }).join('') || '<div class="empty-state">No messages yet.</div>';
+        document.querySelector('#chat-dialog').hidden = false;
+      } catch (error) { notify(error.message); }
       return;
     }
     const moderate = event.target.closest('[data-moderate-user]');

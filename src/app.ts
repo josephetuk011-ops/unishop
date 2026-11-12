@@ -14,6 +14,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import { detectContactInfo } from './chatGuard';
 import { NotificationInput, adminEmail, getVapidPublicKey, sendAdminPhone, sendEmail, sendPush } from './notifications';
 
 dotenv.config();
@@ -45,7 +46,7 @@ const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED === 'tru
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
 type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
-type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[] };
+type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[]; conversations: any[]; chatMessages: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
 const refreshTokenCookieName = 'unishop-refresh';
@@ -195,6 +196,27 @@ const productVideoUpload = multer({
   }
 });
 
+const allowedAudioExtensions = ['.webm', '.ogg', '.oga', '.opus', '.mp3', '.m4a', '.aac', '.wav', '.mp4', '.3gp'];
+const chatAudioUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_request, _file, callback) => {
+      fs.mkdirSync(uploadDirectory, { recursive: true });
+      callback(null, uploadDirectory);
+    },
+    filename: (_request, file, callback) => {
+      const fromName = path.extname(file.originalname || '').toLowerCase().replace(/[^.a-z0-9]/g, '');
+      const fromType = (file.mimetype.split('/')[1] || '').split(';')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+      const extension = [fromName, `.${fromType}`, fromType === 'mpeg' ? '.mp3' : ''].find((candidate) => allowedAudioExtensions.includes(candidate)) || '.webm';
+      callback(null, `${Date.now()}-${randomBytes(10).toString('hex')}${extension}`);
+    }
+  }),
+  limits: { fileSize: 3 * 1024 * 1024, files: 1 },
+  fileFilter: (_request, file, callback) => {
+    if (!/^(audio|video)\//.test(String(file.mimetype))) return callback(new Error('Choose an audio file.'));
+    callback(null, true);
+  }
+});
+
 // Browsers and scripts can claim any MIME type, so check the first bytes of an uploaded image against the real formats.
 function looksLikeImage(file: string) {
   try {
@@ -288,10 +310,10 @@ if (process.env.NODE_ENV === 'production' && !process.env.MARKETPLACE_DATA_PATH)
 function loadState(): MarketplaceState {
   try {
     const parsed = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [], auditLogs: parsed.auditLogs || [], notifications: parsed.notifications || [], pushSubscriptions: parsed.pushSubscriptions || [] };
+    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [], auditLogs: parsed.auditLogs || [], notifications: parsed.notifications || [], pushSubscriptions: parsed.pushSubscriptions || [], conversations: parsed.conversations || [], chatMessages: parsed.chatMessages || [] };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    return { users: [], orders: [], bookings: [], serviceListings: [], sellerProducts: [], reviews: [], payouts: [], auditLogs: [], notifications: [], pushSubscriptions: [] };
+    return { users: [], orders: [], bookings: [], serviceListings: [], sellerProducts: [], reviews: [], payouts: [], auditLogs: [], notifications: [], pushSubscriptions: [], conversations: [], chatMessages: [] };
   }
 }
 
@@ -432,6 +454,9 @@ function refreshTokenFor(user: User) {
   return issueSignedToken(user, 'refresh');
 }
 
+const presence = new Map<string, number>();
+const isOnline = (userId?: string) => Boolean(userId && Date.now() - (presence.get(userId) || 0) < 60000);
+
 function authenticatedUser(request: Request): User | undefined {
   const token = getTokenFromRequest(request);
   if (!token) return undefined;
@@ -440,6 +465,7 @@ function authenticatedUser(request: Request): User | undefined {
     if (payload.type && payload.type !== 'access') return undefined;
     if (payload.sub === adminIdentity.id && payload.role === 'admin') return adminIdentity;
     const user = state.users.find((member) => member.id === payload.sub);
+    if (user && user.role !== 'admin' && !user.suspendedAt) presence.set(user.id, Date.now());
     return !user || user.role === 'admin' || user.suspendedAt ? undefined : user;
   } catch {
     return undefined;
@@ -608,7 +634,8 @@ function notifyUser(userId: string | undefined, input: NotificationInput) {
   state.notifications.push({ id: randomBytes(8).toString('hex'), userId: user.id, title: input.title, body: input.body, url: input.url, createdAt: new Date().toISOString(), read: false });
   if (state.notifications.length > 5000) state.notifications.splice(0, state.notifications.length - 5000);
   saveState();
-  sendEmail(user.email, input).catch((error) => console.error('Email notification failed:', error.message));
+  const publicBase = (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://unishopit.com')).replace(/\/$/, '');
+  sendEmail(user.email, { ...input, url: input.url && input.url.startsWith('/') && publicBase ? `${publicBase}${input.url}` : input.url }).catch((error) => console.error('Email notification failed:', error.message));
   state.pushSubscriptions.filter((item) => item.userId === user.id).forEach((item) => {
     sendPush(item.subscription, input).then((result) => {
       if (result === 'gone') { state.pushSubscriptions = state.pushSubscriptions.filter((entry) => entry !== item); saveState(); }
@@ -907,7 +934,7 @@ app.get('/api/admin/dashboard', (request, response) => {
 });
 app.get('/api/admin/records', (request, response) => {
   requireAdmin(request);
-  const kinds = ['users', 'orders', 'bookings', 'listings', 'payouts', 'audit'] as const;
+  const kinds = ['users', 'orders', 'bookings', 'listings', 'payouts', 'audit', 'chats'] as const;
   const kind = request.query.kind;
   if (typeof kind !== 'string' || !kinds.includes(kind as typeof kinds[number])) fail(400, 'Choose a valid admin record type.');
   const limit = Math.min(100, Math.max(1, Number.parseInt(String(request.query.limit || '50'), 10) || 50));
@@ -933,7 +960,13 @@ app.get('/api/admin/records', (request, response) => {
               const owner = userById.get(payout.userId);
               return { ...payoutResponse(payout), ownerName: owner?.name || 'Account', ownerEmail: owner?.email || '', ownerRole: owner?.role || 'unknown' };
             })
-            : state.auditLogs;
+            : kind === 'chats'
+              ? state.conversations.map((conversation) => {
+                const messages = state.chatMessages.filter((message) => message.conversationId === conversation.id);
+                const last = messages[messages.length - 1];
+                return { id: conversation.id, createdAt: conversation.updatedAt || conversation.createdAt, listingTitle: conversation.listingTitle, status: conversation.status, offerNaira: conversation.offerNaira ?? null, customerName: userById.get(conversation.customerId)?.name || 'Customer', customerEmail: userById.get(conversation.customerId)?.email || '', providerName: userById.get(conversation.providerUserId)?.businessName || userById.get(conversation.providerUserId)?.name || 'Provider', messageCount: messages.length, violations: messages.filter((message) => message.violation).length, lastMessage: last ? (last.kind === 'text' ? last.text : last.kind) : '' };
+              })
+              : state.auditLogs;
   records.sort((left, right) => (Date.parse(right.createdAt) || 0) - (Date.parse(left.createdAt) || 0));
   const filtered = search ? records.filter((record) => JSON.stringify(record).toLowerCase().includes(search)) : records;
   response.json({ kind, total: filtered.length, offset, limit, records: filtered.slice(offset, offset + limit) });
@@ -969,7 +1002,7 @@ app.patch('/api/admin/orders/:reference/tracking', (request: Request, response: 
 app.patch('/api/admin/users/:id/suspension', (request: Request, response: Response) => {
   const admin = requireAdmin(request);
   const user = state.users.find((member) => member.id === request.params.id);
-  if (!user || !['seller', 'provider'].includes(user.role)) fail(404, 'Seller or service provider not found.');
+  if (!user || !['seller', 'provider', 'customer', 'dispatch'].includes(user.role)) fail(404, 'Account not found.');
   const suspended = request.body?.suspended;
   const reason = typeof request.body?.reason === 'string' ? sanitizeText(request.body.reason, '') : '';
   if (typeof suspended !== 'boolean') fail(400, 'Choose whether to suspend or restore this account.');
@@ -1133,7 +1166,7 @@ app.get('/api/services', (_request, response) => {
   const userListings = state.serviceListings.filter((listing) => !isAccountSuspended(listing.userId)).map((listing) => {
     const reviews = reviewsByListing[listing.id] || [];
     const providerProfile = publicBusinessProfile(listing.userId);
-    return { ...listing, provider: providerProfile?.businessName || listing.provider, providerProfile, reviews, reviewCount: reviews.length, rating: reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0 };
+    return { ...listing, price: null, negotiable: true, online: isOnline(listing.userId), provider: providerProfile?.businessName || listing.provider, providerProfile, reviews, reviewCount: reviews.length, rating: reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0 };
   });
   response.json([...userListings, ...providers]);
 });
@@ -1277,11 +1310,11 @@ app.post('/api/provider/listings', (request: Request, response: Response) => {
   if (!serviceNiches.includes(niche)) fail(400, 'Choose one of the available service niches.');
   if (typeof title !== 'string' || title.trim().length < 3 || title.length > 100) fail(400, 'Enter a service title.');
   if (typeof description !== 'string' || description.trim().length < 10 || description.length > 1500) fail(400, 'Describe your service in at least 10 characters.');
-  if (!Number.isInteger(Number(price)) || Number(price) < 500 || Number(price) > 100000000) fail(400, 'Enter a valid price in Naira.');
+  if (price !== undefined && price !== null && price !== '') fail(400, 'Service providers do not set a price. Customers negotiate it with you in chat.');
   if (!Array.isArray(portfolio) || portfolio.length < 1 || portfolio.length > 6 || portfolio.some((image) => !isMediaRef(image, 'image'))) fail(400, 'Upload 1 to 6 work photos first.');
   if (video !== undefined && (!isMediaRef(video, 'video') || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
-  const listing = { id: randomBytes(12).toString('hex'), userId: user.id, provider: user.name, businessName: user.businessName, niche, title: title.trim(), description: description.trim(), price: Number(price), neighbourhood: 'Uyo, Akwa Ibom', portfolio, video, videoDuration: video === undefined ? undefined : Number(videoDuration), createdAt: new Date().toISOString() };
+  const listing = { id: randomBytes(12).toString('hex'), userId: user.id, provider: user.name, businessName: user.businessName, niche, title: title.trim(), description: description.trim(), price: null, negotiable: true, neighbourhood: 'Uyo, Akwa Ibom', portfolio, video, videoDuration: video === undefined ? undefined : Number(videoDuration), createdAt: new Date().toISOString() };
   state.serviceListings.push(listing);
   user.niche = niche;
   saveState();
@@ -1296,10 +1329,9 @@ app.patch('/api/provider/listings/:id', (request: Request, response: Response) =
   const { title, description, price } = request.body || {};
   if (title !== undefined && (typeof title !== 'string' || title.trim().length < 3 || title.length > 100)) fail(400, 'Enter a service title.');
   if (description !== undefined && (typeof description !== 'string' || description.trim().length < 10 || description.length > 1500)) fail(400, 'Describe your service in at least 10 characters.');
-  if (price !== undefined && (!Number.isInteger(Number(price)) || Number(price) < 500 || Number(price) > 100000000)) fail(400, 'Enter a valid price in Naira.');
+  if (price !== undefined && price !== null && price !== '') fail(400, 'Service providers do not set a price. Customers negotiate it with you in chat.');
   if (title !== undefined) listing.title = title.trim();
   if (description !== undefined) listing.description = description.trim();
-  if (price !== undefined) listing.price = Number(price);
   listing.updatedAt = new Date().toISOString();
   saveState();
   response.json({ listing });
@@ -1735,6 +1767,193 @@ app.get('/api/me/orders', (request: Request, response: Response) => {
   const user = requireUser(request);
   response.json(state.orders.filter((order) => order.userId === user.id).map(safeOrder));
 });
+// ---- Negotiation chat between a customer and a service provider ----
+const chatWarning = 'Do not share bank account numbers; accounts that do are suspended automatically. No mobile calls until after payment is made; accounts that call before payment are suspended.';
+function chatOtherParty(conversation: any, userId: string) {
+  return state.users.find((member) => member.id === (conversation.customerId === userId ? conversation.providerUserId : conversation.customerId));
+}
+function chatAccess(request: Request): { user: User; conversation: any } {
+  const user = requireUser(request);
+  const conversation = state.conversations.find((item) => item.id === request.params.id);
+  if (!conversation || ![conversation.customerId, conversation.providerUserId].includes(user.id)) fail(404, 'Conversation not found.');
+  return { user, conversation };
+}
+function visibleMessages(conversationId: string) {
+  return state.chatMessages.filter((message) => message.conversationId === conversationId && !message.violation);
+}
+function conversationSummary(conversation: any, viewer: User) {
+  const other = chatOtherParty(conversation, viewer.id);
+  const messages = visibleMessages(conversation.id);
+  const last = messages[messages.length - 1];
+  const readAt = Date.parse(conversation.readAt?.[viewer.id] || '') || 0;
+  const unread = messages.filter((message) => message.senderId !== viewer.id && message.kind !== 'system' && Date.parse(message.createdAt) > readAt).length;
+  return {
+    id: conversation.id, listingId: conversation.listingId, listingTitle: conversation.listingTitle, status: conversation.status,
+    offerNaira: conversation.offerNaira ?? null, bookingId: conversation.bookingId, createdAt: conversation.createdAt, updatedAt: conversation.updatedAt,
+    youAre: conversation.customerId === viewer.id ? 'customer' : 'provider',
+    otherName: other ? (other.role === 'provider' ? other.businessName || other.name : other.name) : 'Unishop user', otherOnline: isOnline(other?.id),
+    lastMessage: last ? (last.kind === 'text' ? last.text : last.kind === 'image' ? 'Photo' : last.kind === 'audio' ? 'Voice message' : last.text) : '', unread
+  };
+}
+function chatMedia(media: any) {
+  if (!media || typeof media !== 'object') return undefined;
+  if (media.kind === 'image' && isMediaRef(media.url, 'image')) return { kind: 'image', url: media.url };
+  if (media.kind === 'audio' && isMediaRef(media.url, 'video')) return { kind: 'audio', url: media.url };
+  fail(400, 'That attachment is not valid. Upload it again.');
+}
+function addChatMessage(conversation: any, fields: Record<string, unknown>) {
+  const message = { id: randomBytes(10).toString('hex'), conversationId: conversation.id, seq: state.chatMessages.length ? state.chatMessages[state.chatMessages.length - 1].seq + 1 : 1, createdAt: new Date().toISOString(), ...fields };
+  state.chatMessages.push(message);
+  conversation.updatedAt = message.createdAt;
+  return message;
+}
+function chatPayload(conversation: any, viewer: User, after = 0) {
+  const messages = visibleMessages(conversation.id).filter((message) => message.seq > after).map(({ violation, ...rest }) => rest);
+  const readAt = conversation.readAt || (conversation.readAt = {});
+  return { conversation: conversationSummary(conversation, viewer), messages, warning: chatWarning };
+}
+
+app.post('/api/presence', (request: Request, response: Response) => {
+  const user = authenticatedUser(request);
+  response.json({ ok: Boolean(user) });
+});
+app.get('/api/online-providers', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  if (!['seller', 'provider'].includes(user.role)) fail(403, 'Only vendors and service providers can see who is online.');
+  response.json(state.users.filter((member) => member.role === 'provider' && !member.suspendedAt && isOnline(member.id)).map((member) => ({ id: member.id, name: member.businessName || member.name, niche: member.niche || '' })));
+});
+
+app.post('/api/uploads/chat', (request: Request, response: Response, next: NextFunction) => {
+  const user = authenticatedUser(request);
+  if (!user || !['customer', 'provider'].includes(user.role)) return response.status(403).json({ error: 'Sign in to send attachments.' });
+  const kind = request.query.kind === 'audio' ? 'audio' : 'image';
+  (kind === 'audio' ? chatAudioUpload : imageUpload).single('file')(request, response, async (error: any) => {
+    if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? (kind === 'audio' ? 'Voice messages must be under 3 MB.' : 'Photos must be 5 MB or smaller.') : error.message || 'The attachment could not be uploaded.' });
+    const file = request.file;
+    if (!file) return response.status(400).json({ error: 'Choose a file.' });
+    if (kind === 'image' ? !looksLikeImage(file.path) : !looksLikeVideo(file.path)) {
+      fs.unlink(file.path, () => {});
+      return response.status(400).json({ error: kind === 'image' ? 'That is not a real JPG, PNG or WebP image.' : 'That is not an audio file.' });
+    }
+    const url = (await uploadToCloudinary(file.path, kind === 'image' ? 'image' : 'video')) || `/uploads/${file.filename}`;
+    response.status(201).json({ kind, url });
+  });
+});
+
+app.post('/api/chats', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  if (user.role !== 'customer') fail(403, 'Sign in with a customer account to negotiate with a service provider.');
+  const listing = state.serviceListings.find((item) => item.id === request.body?.listingId && !isAccountSuspended(item.userId));
+  if (!listing) fail(404, 'This service is not available.');
+  let conversation = state.conversations.find((item) => item.customerId === user.id && item.listingId === listing.id && item.status !== 'ended');
+  if (!conversation) {
+    const now = new Date().toISOString();
+    conversation = { id: randomBytes(12).toString('hex'), listingId: listing.id, listingTitle: listing.title, customerId: user.id, providerUserId: listing.userId, status: 'open', createdAt: now, updatedAt: now, readAt: {} };
+    state.conversations.push(conversation);
+    saveState();
+  }
+  response.status(201).json({ conversation: conversationSummary(conversation, user) });
+});
+
+app.get('/api/chats', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  const mine = state.conversations.filter((item) => (item.customerId === user.id || item.providerUserId === user.id) && (item.customerId === user.id || visibleMessages(item.id).length > 0));
+  mine.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+  response.json({ conversations: mine.map((item) => conversationSummary(item, user)), unread: mine.reduce((sum, item) => sum + conversationSummary(item, user).unread, 0) });
+});
+
+app.get('/api/chats/:id', (request: Request, response: Response) => {
+  const { user, conversation } = chatAccess(request);
+  const after = Number.parseInt(String(request.query.after || '0'), 10) || 0;
+  const payload = chatPayload(conversation, user, after);
+  const readAt = (conversation.readAt ||= {});
+  const latest = visibleMessages(conversation.id).slice(-1)[0];
+  if (latest && (!readAt[user.id] || Date.parse(readAt[user.id]) < Date.parse(latest.createdAt))) { readAt[user.id] = new Date().toISOString(); saveState(); }
+  response.json(payload);
+});
+
+app.post('/api/chats/:id/messages', (request: Request, response: Response) => {
+  const { user, conversation } = chatAccess(request);
+  if (conversation.status === 'ended') fail(409, 'This negotiation has ended. Start a new one from the service page.');
+  const text = typeof request.body?.text === 'string' ? request.body.text.trim().slice(0, 1000) : '';
+  const media = chatMedia(request.body?.media);
+  if (!text && !media) fail(400, 'Type a message or attach a photo or voice message.');
+  const guard = detectContactInfo(text);
+  if (guard.found) {
+    addChatMessage(conversation, { senderId: user.id, kind: 'text', text, violation: true, violationKind: guard.kind });
+    user.suspendedAt = new Date().toISOString();
+    user.suspensionReason = `Automatic: shared a ${guard.kind} in a negotiation chat.`;
+    saveState();
+    auditAction('account.auto_suspended', user.id, { conversationId: conversation.id, reason: guard.kind });
+    notifyAdmin({ title: 'Account suspended automatically', body: `${user.name} (${user.role}) shared a ${guard.kind} in a negotiation chat and was suspended. Review it in the Chats section.` });
+    return response.status(403).json({ error: `Your account has been suspended for sharing a ${guard.kind}. Contact Unishop support if you think this is a mistake.`, suspended: true });
+  }
+  const firstFromCustomer = user.id === conversation.customerId && !state.chatMessages.some((message) => message.conversationId === conversation.id && message.senderId === conversation.customerId && message.kind !== 'system');
+  const message = addChatMessage(conversation, { senderId: user.id, kind: media ? media.kind : 'text', text, ...(media ? { media } : {}) });
+  saveState();
+  if (firstFromCustomer) {
+    notifyUser(conversation.providerUserId, { title: `New customer message about ${conversation.listingTitle}`, body: `${user.name} started a negotiation about "${conversation.listingTitle}". Open the chat to reply.`, url: `/dashboard.html#messages?chat=${conversation.id}` });
+  }
+  const { violation, ...clean } = message as any;
+  response.status(201).json({ message: clean });
+});
+
+app.post('/api/chats/:id/offer', (request: Request, response: Response) => {
+  const { user, conversation } = chatAccess(request);
+  if (user.id !== conversation.providerUserId) fail(403, 'Only the service provider can send a price.');
+  if (conversation.status === 'ended') fail(409, 'This negotiation has ended.');
+  const amount = Number(request.body?.amount);
+  if (!Number.isInteger(amount) || amount < 1000 || amount > 100000000) fail(400, 'Enter a price of at least ₦1,000.');
+  conversation.offerNaira = amount;
+  addChatMessage(conversation, { senderId: user.id, kind: 'offer', text: `Price offer: ₦${amount.toLocaleString('en-NG')}`, amountNaira: amount });
+  saveState();
+  response.status(201).json({ conversation: conversationSummary(conversation, user) });
+});
+
+app.post('/api/chats/:id/end', (request: Request, response: Response) => {
+  const { user, conversation } = chatAccess(request);
+  if (conversation.status !== 'ended') {
+    conversation.status = 'ended';
+    addChatMessage(conversation, { senderId: user.id, kind: 'system', text: `${user.name} ended the negotiation.` });
+    saveState();
+  }
+  response.json({ conversation: conversationSummary(conversation, user) });
+});
+
+app.post('/api/chats/:id/book', (request: Request, response: Response) => {
+  const { user, conversation } = chatAccess(request);
+  if (user.id !== conversation.customerId) fail(403, 'Only the customer can proceed to payment.');
+  if (conversation.status === 'ended') fail(409, 'This negotiation has ended.');
+  if (!conversation.offerNaira) fail(400, 'Wait for the service provider to send a price first.');
+  const listing = state.serviceListings.find((item) => item.id === conversation.listingId);
+  if (!listing || isAccountSuspended(listing.userId)) fail(409, 'This service provider is currently unavailable.');
+  const { neighbourhood, time } = request.body || {};
+  if (typeof neighbourhood !== 'string' || neighbourhood.trim().length < 2 || typeof time !== 'string' || time.trim().length < 2) fail(400, 'Tell us where and when you need the service.');
+  let booking = state.bookings.find((item) => item.id === conversation.bookingId && item.userId === user.id && item.paymentStatus !== 'paid' && item.amountNaira === conversation.offerNaira);
+  if (!booking) {
+    booking = { id: randomBytes(12).toString('hex'), userId: user.id, providerUserId: listing.userId, providerId: listing.id, provider: listing.provider || listing.businessName, service: listing.title, amountNaira: conversation.offerNaira, neighbourhood: neighbourhood.trim().slice(0, 200), time: time.trim().slice(0, 100), note: `Negotiated in chat ${conversation.id}`, status: 'requested', paymentStatus: 'unpaid', createdAt: new Date().toISOString() };
+    state.bookings.push(booking);
+    conversation.bookingId = booking.id;
+    addChatMessage(conversation, { senderId: user.id, kind: 'system', text: `${user.name} agreed to ₦${conversation.offerNaira.toLocaleString('en-NG')} and is proceeding to payment.` });
+    saveState();
+    notifyUser(listing.userId, { title: 'Customer agreed to your price', body: `${user.name} agreed to ₦${conversation.offerNaira.toLocaleString('en-NG')} for ${listing.title}. The booking is confirmed once they pay.`, url: '/dashboard.html#messages' });
+    notifyAdmin({ title: 'New booking request', body: `${user.name} agreed a price of ₦${conversation.offerNaira.toLocaleString('en-NG')} for ${listing.title} with ${booking.provider}.` });
+  }
+  response.status(201).json({ booking });
+});
+
+app.get('/api/admin/chats/:id', (request: Request, response: Response) => {
+  requireAdmin(request);
+  const conversation = state.conversations.find((item) => item.id === request.params.id);
+  if (!conversation) fail(404, 'Conversation not found.');
+  const customer = state.users.find((member) => member.id === conversation.customerId);
+  const provider = state.users.find((member) => member.id === conversation.providerUserId);
+  response.json({
+    conversation: { ...conversation, customerName: customer?.name, providerName: provider?.businessName || provider?.name },
+    messages: state.chatMessages.filter((message) => message.conversationId === conversation.id).map((message) => ({ ...message, senderName: state.users.find((member) => member.id === message.senderId)?.name || 'Unishop' }))
+  });
+});
+
 app.get('/api/me/bookings', (request: Request, response: Response) => {
   const user = requireUser(request);
   response.json(state.bookings.filter((booking) => booking.userId === user.id));
@@ -1746,6 +1965,7 @@ app.post('/api/bookings', (request: Request, response: Response) => {
   const { providerId, neighbourhood, time, note } = request.body || {};
   const provider = state.serviceListings.find((person) => person.id === providerId && !isAccountSuspended(person.userId)) || providers.find((person) => person.id === providerId);
   if (!provider || typeof neighbourhood !== 'string' || neighbourhood.trim().length < 2 || typeof time !== 'string') fail(400, 'Complete the service booking details.');
+  if (!provider.price) fail(400, 'Negotiate the price with this service provider in chat first.');
   const providerUserId = provider.userId;
   const booking = { id: randomBytes(12).toString('hex'), userId: user.id, providerUserId, providerId, provider: provider.provider || provider.name, service: provider.title || provider.trade, amountNaira: provider.price, neighbourhood: neighbourhood.trim(), time, note: typeof note === 'string' ? note.slice(0, 1000) : '', status: 'requested', paymentStatus: 'unpaid', createdAt: new Date().toISOString() };
   state.bookings.push(booking);

@@ -42,6 +42,7 @@
         <button class="nav-link" data-view="bookings"><span>◇</span> Bookings</button>
         <button class="nav-link" data-view="listings"><span>▧</span> Listings</button>
         <button class="nav-link" data-view="payouts"><span>₦</span> Payouts</button>
+        <button class="nav-link" data-view="chats"><span>✉</span> Chats</button>
         <button class="nav-link" data-view="audit"><span>≡</span> Admin activity</button>
       </nav>
       <div class="sidebar-bottom">
@@ -73,6 +74,15 @@
         <textarea id="moderation-reason" name="reason" rows="4" maxlength="500" placeholder="Document the policy concern for the audit trail."></textarea>
         <div class="dialog-actions"><button class="button button-secondary" type="button" data-close-dialog>Cancel</button><button id="moderation-submit" class="button button-danger" type="submit">Suspend account</button></div>
       </form>
+    </section>
+  </div>
+  <div id="chat-dialog" class="dialog-backdrop" hidden>
+    <section class="dialog-panel chat-panel" role="dialog" aria-modal="true" aria-labelledby="chat-title">
+      <button class="dialog-close" type="button" data-close-dialog aria-label="Close">×</button>
+      <p class="eyebrow">NEGOTIATION CHAT</p>
+      <h2 id="chat-title"></h2>
+      <p id="chat-subtitle" class="dialog-copy"></p>
+      <div id="chat-log" class="chat-log"></div>
     </section>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

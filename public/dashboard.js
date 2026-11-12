@@ -77,7 +77,7 @@ function orderRows(orders) {
 }
 function serviceCards(listings) {
   if (!listings.length) return '<div class="empty-state">Your live service listings will appear here after you publish one.</div>';
-  return `<div class="portfolio-grid">${listings.map((listing) => `<article class="work-card"><img src="${escapeHtml(listing.portfolio?.[0] || '')}" alt="${escapeHtml(listing.title)} work sample"><div class="work-card-body"><h3>${escapeHtml(listing.title)}</h3><p>${escapeHtml(listing.niche)} · ${formatMoney(listing.price)} · ${Number(listing.rating || 0).toFixed(1)} ★ (${listing.reviewCount || 0})</p><p>${escapeHtml(listing.description)}</p><div class="card-actions"><button class="primary-button" type="button" data-edit-service="${escapeHtml(listing.id)}">Edit</button></div></div></article>`).join('')}</div>`;
+  return `<div class="portfolio-grid">${listings.map((listing) => `<article class="work-card"><img src="${escapeHtml(listing.portfolio?.[0] || '')}" alt="${escapeHtml(listing.title)} work sample"><div class="work-card-body"><h3>${escapeHtml(listing.title)}</h3><p>${escapeHtml(listing.niche)} · Price negotiated in chat · ${Number(listing.rating || 0).toFixed(1)} ★ (${listing.reviewCount || 0})</p><p>${escapeHtml(listing.description)}</p><div class="card-actions"><button class="primary-button" type="button" data-edit-service="${escapeHtml(listing.id)}">Edit</button></div></div></article>`).join('')}</div>`;
 }
 function reviewsPanel(reviews) {
   const body = reviews.length ? reviews.slice().reverse().map((review) => `<article class="review-item"><strong>${escapeHtml(review.reviewer)} <span class="review-stars">${'★'.repeat(review.rating)}</span></strong><p>${escapeHtml(review.comment)}</p></article>`).join('') : '<div class="empty-state">Customer ratings and comments will appear here after completed bookings.</div>';
@@ -170,7 +170,7 @@ function providerDashboard() {
 }
 function serviceForm() {
   const options = roleNiches.map((niche) => `<option value="${escapeHtml(niche)}" ${dashboardData.user.niche === niche ? 'selected' : ''}>${escapeHtml(niche)}</option>`).join('');
-  return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><label class="form-field">Starting price (NGN)<input name="price" type="number" required min="500" step="100" placeholder="12000"></label><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 6 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · Any video · under 2 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
+  return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><p class="form-help full">You do not set a price. Customers tap Proceed to negotiation and agree the price with you in chat.</p><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 6 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · Any video · under 2 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerForm() {
   return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option value="" disabled selected>Choose a category</option>${categoryOptions()}</select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><div class="full" data-spec-fields></div>${availabilityFields()}<label class="form-field stock-field">Quantity available<input name="quantity" type="number" min="0" max="100000" step="1" required value="1"></label><label class="form-field stock-field">Sizes <span class="form-help">Optional. Number available per size, like S:5, M:3, L:2. When filled, the quantity above is ignored.</span><input name="sizes" maxlength="200" placeholder="S:5, M:3, L:2"></label><label class="form-field">Product photos <span class="form-help">1 to 3 photos. The first is the cover.</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label><div class="upload-preview full" id="product-preview"></div><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · Any video · under 2 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
@@ -323,6 +323,18 @@ function customerDashboard() {
   });
   return `${header(`Welcome, ${dashboardData.user.name.split(' ')[0]}`, 'Your Unishop orders and service bookings.')}${panel('Your orders', table(['Order', 'Products', 'Total', 'Payment and delivery'], customerOrderRows, 'Your orders will appear here.'))}${panel('Your service bookings', table(['Provider', 'Service', 'Preferred time', 'Status', 'Price', 'Next step'], bookingRowsForCustomer, 'Your service bookings will appear here.'))}${reviewForm}`;
 }
+async function showOnlineProviders() {
+  try {
+    const online = await api('/api/online-providers');
+    const body = online.length ? `<div class="niche-grid">${online.map((item) => `<span class="niche-chip active"><span class="online-dot">${escapeHtml(item.name)}</span>${item.niche ? ` · ${escapeHtml(item.niche)}` : ''}</span>`).join('')}</div>` : '<div class="empty-state">No service provider is online right now.</div>';
+    if (selectedView === 'overview') workspace.insertAdjacentHTML('beforeend', panel('Service providers online now', body));
+  } catch { /* the panel is optional */ }
+}
+function renderMessages() {
+  const hashChat = (location.hash.match(/chat=([a-f0-9]+)/) || [])[1];
+  workspace.innerHTML = `${header('Messages', dashboardData.role === 'provider' ? 'Customers who want to negotiate a price with you. Reply here to agree a price.' : 'Your negotiations with service providers.')}<div id="chat-inbox"></div>`;
+  window.UnishopChat.mountInbox(document.querySelector('#chat-inbox'), hashChat);
+}
 function renderDashboard() {
   document.querySelector('#workspace-role').textContent = roleLabels[dashboardData.role] || 'Marketplace';
   document.querySelector('#profile-name').textContent = dashboardData.user.name;
@@ -335,10 +347,15 @@ function renderDashboard() {
   document.querySelector('#listing-nav-label').textContent = seller ? 'Products' : dashboardData.role === 'provider' ? 'Service portfolio' : dashboardData.role === 'dispatch' ? 'Delivery area' : dashboardData.role === 'admin' ? 'Marketplace' : 'Orders';
   document.querySelector('#activity-nav-label').textContent = dashboardData.role === 'provider' ? 'Bookings & reviews' : dashboardData.role === 'dispatch' ? 'Delivery jobs' : dashboardData.role === 'seller' ? 'Orders' : dashboardData.role === 'admin' ? 'Operations' : 'Bookings';
   document.querySelector('#earnings-nav-label').textContent = 'Earnings';
+  const canMessage = ['customer', 'provider'].includes(dashboardData.role);
+  document.querySelector('#messages-nav-link').hidden = !canMessage;
+  if (canMessage && !window.__messagesWatch && window.UnishopChat) { window.__messagesWatch = true; window.UnishopChat.watchUnread((count) => { const badge = document.querySelector('#messages-badge'); if (badge) badge.textContent = count ? String(count) : ''; }); }
+  if (selectedView === 'messages' && canMessage) { renderMessages(); document.querySelectorAll('[data-view]').forEach((link) => link.classList.toggle('active', link.dataset.view === selectedView)); loadNotifications(); return; }
   workspace.innerHTML = dashboardData.role === 'provider'
       ? providerDashboard()
       : seller ? sellerDashboard() : dashboardData.role === 'dispatch' ? dispatchDashboard() : customerDashboard();
   populatePayoutBanks();
+  if (['seller', 'provider'].includes(dashboardData.role) && selectedView === 'overview') showOnlineProviders();
   loadNotifications();
   document.querySelectorAll('[data-view]').forEach((link) => link.classList.toggle('active', link.dataset.view === selectedView));
 }
@@ -347,6 +364,7 @@ async function refreshDashboard() {
     if (!productCategoryGroups.length) productCategoryGroups = (await api('/api/product-categories').catch(() => ({ groups: [] }))).groups;
     if (!Object.keys(productSpecs.families).length) productSpecs = await api('/api/product-specs').catch(() => ({ families: {}, categories: {} }));
     dashboardData = await api('/api/dashboard');
+    if (!window.__hashHandled) { window.__hashHandled = true; if (location.hash.startsWith('#messages')) selectedView = 'messages'; }
     if (dashboardData.role === 'admin') return endSession();
     if (['seller', 'provider', 'dispatch'].includes(dashboardData.role) && !businessProfileComplete(dashboardData.user)) selectedView = 'profile';
   } catch (error) {
@@ -427,7 +445,7 @@ function productEditForm(product) {
   return `<form class="form-grid edit-form" data-product-edit-form="${escapeHtml(product.id)}"><label class="form-field full">Product name<input name="name" required minlength="3" maxlength="100" value="${escapeHtml(product.name)}"></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="1" value="${Number(product.price)}"></label><label class="form-field">Category<select name="category" required>${legacy}${categories}</select></label><div class="full" data-spec-fields>${specFieldsHtml(product.category, product.specs || {})}</div>${availabilityFields(product)}${stock}<label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000">${escapeHtml(product.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
 }
 function serviceEditForm(listing) {
-  return `<form class="form-grid edit-form" data-service-edit-form="${escapeHtml(listing.id)}"><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" value="${escapeHtml(listing.title)}"></label><label class="form-field">Starting price (NGN)<input name="price" type="number" required min="500" step="1" value="${Number(listing.price)}"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500">${escapeHtml(listing.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
+  return `<form class="form-grid edit-form" data-service-edit-form="${escapeHtml(listing.id)}"><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" value="${escapeHtml(listing.title)}"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500">${escapeHtml(listing.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
 }
 document.addEventListener('click', (event) => {
   const editProduct = event.target.closest('[data-edit-product]');
@@ -467,7 +485,7 @@ document.addEventListener('submit', async (event) => {
       notify('Product updated. Customers see the new price and stock now.');
     } else {
       const f = form.elements;
-      await api(`/api/provider/listings/${encodeURIComponent(serviceForm.dataset.serviceEditForm)}`, { method: 'PATCH', body: JSON.stringify({ title: f.title.value, price: Number(f.price.value), description: f.description.value }) });
+      await api(`/api/provider/listings/${encodeURIComponent(serviceForm.dataset.serviceEditForm)}`, { method: 'PATCH', body: JSON.stringify({ title: f.title.value, description: f.description.value }) });
       notify('Service updated.');
     }
     await refreshDashboard();
@@ -657,7 +675,7 @@ document.addEventListener('submit', async (event) => {
     try {
       const upload = await uploadFiles(form.elements.images.files);
       const uploadedVideo = await uploadShortVideo(form.elements.video.files[0]);
-      await api('/api/provider/listings', { method: 'POST', body: JSON.stringify({ niche: form.elements.niche.value, title: form.elements.title.value, description: form.elements.description.value, price: form.elements.price.value, portfolio: upload.images, video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
+      await api('/api/provider/listings', { method: 'POST', body: JSON.stringify({ niche: form.elements.niche.value, title: form.elements.title.value, description: form.elements.description.value, portfolio: upload.images, video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
       selectedView = 'listings';
       await refreshDashboard();
       notify('Your service and work photos are published.');

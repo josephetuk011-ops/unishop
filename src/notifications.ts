@@ -24,8 +24,8 @@ export async function sendEmail(to: string, input: NotificationInput) {
       from: process.env.EMAIL_FROM || 'Unishop <onboarding@resend.dev>',
       to: [to],
       subject: input.title,
-      html: `<p>${escapeHtml(input.body)}</p>`,
-      text: input.body
+      html: `<p>${escapeHtml(input.body)}</p>${input.url && /^https?:\/\//.test(input.url) ? `<p><a href="${escapeHtml(input.url)}">Open it on Unishop</a><br>${escapeHtml(input.url)}</p>` : ''}`,
+      text: input.url && /^https?:\/\//.test(input.url) ? `${input.body}\n\n${input.url}` : input.body
     })
   });
   if (!response.ok) throw new Error(`Email provider responded ${response.status}`);
