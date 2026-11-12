@@ -508,3 +508,31 @@ body.dark-theme .product-card .product-price{background:#1d2a45;border-color:#f2
 .marketplace-niches { margin: 28px 0 12px; }
 
 .auth-forgot{display:block;margin:10px auto 0;background:none;border:0;color:#1d3fbb;font:inherit;font-size:.9rem;cursor:pointer;text-decoration:underline}.auth-forgot[hidden]{display:none}
+
+/* One tidy top bar: logo | section links | actions; hero picture on the right */
+.site-header{height:72px;gap:24px;padding:0 max(20px,calc((100% - 1240px)/2));position:sticky;top:0;z-index:50}
+.site-header .category-nav{flex:1;height:100%;background:transparent;border:0;overflow:visible;display:flex;align-items:center}
+.site-header .category-nav-inner{width:auto;max-width:none;margin:0;gap:6px;height:auto}
+.site-header .category-nav a{height:38px;padding:0 14px;border-radius:999px;color:#172957;font-size:14px;font-weight:600}
+.site-header .category-nav a:hover{background:#eef2fb}
+.site-header .category-nav a.active{background:#172957;color:#fff;font-weight:700}
+.site-header .category-nav a.active:after{display:none}
+.site-header .category-nav .sell-link{margin-left:10px;border:1.5px solid #f2bd50;color:#172957;background:#fff8e6}
+.site-header .header-actions{margin-left:0;gap:8px}
+.site-header .header-actions button{height:40px;padding:0 14px;border-radius:999px;border:1px solid #dce3f2;background:#fff;color:#172957;display:inline-flex;align-items:center;gap:7px;font:600 14px var(--sans)}
+.site-header .header-actions .theme-toggle{width:40px;padding:0;justify-content:center}
+.site-header .header-actions .account-button{background:#172957;border-color:#172957;color:#fff}
+.site-header .header-actions .cart-button{background:#f2bd50;border-color:#f2bd50}
+body.dark-theme .site-header .category-nav a{color:#bdc8dc}
+body.dark-theme .site-header .category-nav a.active{background:#a9c5ff;color:#101a33}
+body.dark-theme .site-header .header-actions button{background:#1d2738;border-color:#303a4b;color:#dce5f7}
+.welcome-strip{gap:6px 24px;padding-top:30px;padding-bottom:0;overflow:hidden}
+.welcome-strip:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:1fr auto;align-items:start}
+.welcome-copy{grid-column:1;grid-row:1;align-self:end;padding-bottom:6px}
+.welcome-copy strong{font-size:clamp(26px,3.4vw,40px);line-height:1.1}
+.welcome-copy span{font-size:17px;max-width:520px}
+.welcome-actions{grid-column:1;grid-row:2;padding-bottom:30px}
+.welcome-photo{grid-column:2;grid-row:1/3;width:min(300px,34vw);height:auto;align-self:end;display:block}
+@media(max-width:900px){.site-header{height:auto;flex-wrap:wrap;padding:10px 16px;gap:8px 12px}.site-header .category-nav{order:3;flex:1 0 100%;height:auto;overflow-x:auto}.site-header .category-nav-inner{padding:0}.site-header .header-actions{margin-left:auto}.site-header .header-actions .referral-button span:last-child{display:none}}
+@media(max-width:700px){.welcome-strip:not([hidden]){grid-template-columns:minmax(0,1fr) 130px}.welcome-photo{width:130px}.welcome-copy strong{font-size:24px}.welcome-copy span{font-size:15px}.welcome-actions{grid-column:1/3;grid-row:2;padding-bottom:20px}.welcome-photo{grid-row:1}.site-header .header-actions button{height:36px;padding:0 10px;font-size:13px}.site-header .header-actions .theme-toggle{width:36px}}
+@media(max-width:760px){.site-header .category-nav .sell-link{display:inline-flex}.site-header .category-nav{height:auto;overflow-x:auto}.site-header .category-nav-inner{width:max-content;padding:0 2px;gap:4px}.site-header .category-nav a{white-space:nowrap}}
