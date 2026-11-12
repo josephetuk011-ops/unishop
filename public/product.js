@@ -68,7 +68,7 @@ const card = (item) => `<a class="pp-card" href="/product.html?id=${encodeURICom
 
 function render() {
   document.title = `${product.name} | Unishop`;
-  const gallery = Array.isArray(product.images) && product.images.length ? product.images.slice(0, 6) : [product.image];
+  const gallery = Array.isArray(product.images) && product.images.length ? product.images.slice(0, 10) : [product.image];
   const slides = gallery.map((photo) => ({ type: 'image', src: photo }));
   if (product.video) slides.push({ type: 'video', src: product.video });
   const brand = product.brandProfile;
