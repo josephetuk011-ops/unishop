@@ -568,3 +568,6 @@ body.shorts-open{overflow:hidden}
 .sv-close{right:12px}.sv-sound{right:60px;font-size:16px}
 .sv-hint{position:absolute;left:0;right:0;top:64px;margin:0;text-align:center;font-size:12px;opacity:.7;pointer-events:none;z-index:2}
 #toast{z-index:100}
+
+.short-watermark.wm-top{top:10px;left:10px;bottom:auto;z-index:2}
+.detail-video-wrap{position:relative}.detail-video-wrap .detail-video{display:block;width:100%}
