@@ -509,7 +509,7 @@ function trackingOf(order: any) {
 }
 
 function safeOrder(order: any) {
-  const { email, phone, address, customerName, userId, authorizationUrl, accessCode, settlementLines, sellerDispatchContributionNaira, riderSettlementNaira, ...publicOrder } = order;
+  const { email, phone, address, customerName, userId, authorizationUrl, accessCode, balanceReferences, balanceKobo, settlementLines, sellerDispatchContributionNaira, riderSettlementNaira, ...publicOrder } = order;
   return { ...publicOrder, tracking: order.type === 'service' ? undefined : trackingOf(order), items: publicOrder.items.map(({ sellerUserId, ...item }: any) => item) };
 }
 
@@ -524,11 +524,45 @@ async function paystackRequest(endpoint: string, body?: Record<string, unknown>)
   return result.data;
 }
 
+const PART_PAYMENT_FEE_NAIRA = 200; // added once when a buyer chooses to pay in two parts
+
+function adjustStockForOrder(order: any) {
+  if (order.stockAdjusted) return;
+  order.stockAdjusted = true;
+  (order.items || []).forEach((item: any) => {
+    const product = state.sellerProducts.find((entry) => entry.id === item.productId);
+    if (!product || product.preorder || product.stock === undefined || product.stock === null) return;
+    const entry = Array.isArray(product.sizes) ? product.sizes.find((row: any) => row.label === item.size) : undefined;
+    if (entry) entry.quantity = Math.max(0, entry.quantity - item.quantity);
+    product.stock = Array.isArray(product.sizes) && product.sizes.length ? product.sizes.reduce((sum: number, row: any) => sum + row.quantity, 0) : Math.max(0, product.stock - item.quantity);
+  });
+}
+
 async function completePayment(reference: string, payment: any) {
-  const order = state.orders.find((item) => item.reference === reference);
+  const order = state.orders.find((item) => item.reference === reference || (Array.isArray(item.balanceReferences) && item.balanceReferences.includes(reference)));
   if (!order) return undefined;
-  if (payment.status !== 'success' || payment.currency !== 'NGN' || Number(payment.amount) !== order.amountKobo) return order;
+  const isBalance = reference !== order.reference;
+  const expectedKobo = isBalance ? order.balanceKobo : order.amountKobo;
+  if (payment.status !== 'success' || payment.currency !== 'NGN' || Number(payment.amount) !== expectedKobo) return order;
   if (payment.customer?.email && payment.customer.email.toLowerCase() !== order.email.toLowerCase()) return order;
+  // First instalment of a two-part payment: reserve the stock and tell both sides; nothing ships or starts until the balance is paid.
+  if (!isBalance && order.paymentPlan === 'part' && order.paymentStatus !== 'paid') {
+    if (order.paymentStatus !== 'part-paid') {
+      order.paymentStatus = 'part-paid';
+      order.orderStatus = 'part-paid';
+      order.firstPaidAt = new Date().toISOString();
+      adjustStockForOrder(order);
+      if (order.bookingId) {
+        const booking = state.bookings.find((item) => item.id === order.bookingId);
+        if (booking) { booking.paymentStatus = 'part-paid'; booking.status = 'part-paid'; }
+      }
+      saveState();
+      notifyUser(order.userId, { title: 'Part payment received', body: `${formatNaira(order.firstNaira)} received. Pay the remaining ${formatNaira(order.balanceNaira)} from your orders to confirm.`, url: '/dashboard.html#listings' });
+      for (const line of order.settlementLines || []) notifyUser(line.userId, { title: 'Customer paid the first part', body: 'The customer paid half. You will be told as soon as the balance is paid and the order is confirmed.', url: '/dashboard.html' });
+    }
+    return order;
+  }
+  if (isBalance && order.paymentStatus !== 'part-paid' && order.paymentStatus !== 'paid') return order;
   if (order.paymentStatus !== 'paid') {
     order.paymentStatus = 'paid';
     order.orderStatus = 'confirmed';
@@ -544,16 +578,7 @@ async function completePayment(reference: string, payment: any) {
         booking.settlementStatus = 'held';
       }
     }
-    if (!order.stockAdjusted) {
-      order.stockAdjusted = true;
-      (order.items || []).forEach((item: any) => {
-        const product = state.sellerProducts.find((entry) => entry.id === item.productId);
-        if (!product || product.preorder || product.stock === undefined || product.stock === null) return;
-        const entry = Array.isArray(product.sizes) ? product.sizes.find((row: any) => row.label === item.size) : undefined;
-        if (entry) entry.quantity = Math.max(0, entry.quantity - item.quantity);
-        product.stock = Array.isArray(product.sizes) && product.sizes.length ? product.sizes.reduce((sum: number, row: any) => sum + row.quantity, 0) : Math.max(0, product.stock - item.quantity);
-      });
-    }
+    adjustStockForOrder(order);
     const buyer = state.users.find((member) => member.id === order.userId);
     if (buyer) {
       if (order.rewardDiscountNaira > 0) {
@@ -561,7 +586,7 @@ async function completePayment(reference: string, payment: any) {
         buyer.referralCredits = Math.max(0, (buyer.referralCredits || 0) - (order.rewardCredits || 0));
       }
       const referrer = buyer.referredBy ? state.users.find((member) => member.id === buyer.referredBy) : undefined;
-      const qualifyingSubtotal = order.totalNaira + (order.rewardDiscountNaira || 0) - 500;
+      const qualifyingSubtotal = order.totalNaira + (order.rewardDiscountNaira || 0) - 500 - (order.partFeeNaira || 0);
       if (referrer && !buyer.referralRewarded && qualifyingSubtotal >= REFERRAL_MIN_ORDER_NAIRA) {
         buyer.referralRewarded = true;
         referrer.referralCredits = (referrer.referralCredits || 0) + 1;
@@ -1984,7 +2009,9 @@ app.post('/api/bookings', (request: Request, response: Response) => {
 
 app.post('/api/payments/initialize', asyncRoute(async (request: Request, response: Response) => {
   if (!paystackSecret) fail(503, 'Online payments are temporarily unavailable. Please try again later.');
-  const { email, items, customer, delivery, bookingId, idempotencyKey } = request.body || {};
+  const { email, items, customer, delivery, bookingId, idempotencyKey, paymentPlan } = request.body || {};
+  if (paymentPlan !== undefined && !['full', 'part'].includes(paymentPlan)) fail(400, 'Choose to pay in full or in two parts.');
+  const partPayment = paymentPlan === 'part';
   const user = authenticatedUser(request);
   const resolvedIdempotencyKey = typeof idempotencyKey === 'string' && idempotencyKey.trim() ? idempotencyKey.trim() : `pay-${Date.now()}-${randomBytes(8).toString('hex')}`;
   const existingOrder = state.orders.find((order) => order.userId === user?.id && order.idempotencyKey === resolvedIdempotencyKey && order.paymentStatus !== 'failed');
@@ -2002,6 +2029,7 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     if (!user || user.role !== 'customer') fail(401, 'Sign in with a customer account to pay for this booking.');
     booking = state.bookings.find((item) => item.id === bookingId && item.userId === user.id && item.paymentStatus !== 'paid');
     if (!booking) fail(404, 'Unpaid service booking not found.');
+    if (state.orders.some((item) => item.bookingId === booking.id && item.paymentStatus === 'part-paid')) fail(409, 'You already paid the first part of this booking. Pay the remaining balance from your bookings.');
     if (isAccountSuspended(booking.providerUserId)) fail(409, 'This service provider is currently unavailable.');
     const serviceSubtotalNaira = Number(booking.amountNaira);
     const commissionNaira = commissionFor(serviceSubtotalNaira);
@@ -2060,6 +2088,10 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
   }
   const reward = user ? rewardPreview(user, totalNaira - 500) : { discountNaira: 0, welcome: false, credits: 0 };
   totalNaira -= reward.discountNaira;
+  const partFeeNaira = partPayment ? PART_PAYMENT_FEE_NAIRA : 0;
+  totalNaira += partFeeNaira;
+  const firstNaira = partPayment ? Math.ceil(totalNaira / 2) : totalNaira;
+  const balanceNaira = totalNaira - firstNaira;
   const reference = `UNI-${Date.now()}-${randomBytes(6).toString('hex')}`;
   const order = {
     id: randomBytes(12).toString('hex'),
@@ -2083,7 +2115,13 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     riderSettlementNaira: booking ? 0 : 500 + settlementLines.reduce((sum, line) => sum + line.dispatchContributionNaira, 0),
     settlementLines,
     settlementStatus: 'held',
-    amountKobo: totalNaira * 100,
+    paymentPlan: partPayment ? 'part' : 'full',
+    partFeeNaira,
+    firstNaira,
+    balanceNaira,
+    balanceKobo: balanceNaira * 100,
+    balanceReferences: [] as string[],
+    amountKobo: firstNaira * 100,
     currency: 'NGN',
     paymentStatus: 'pending',
     orderStatus: 'awaiting-payment',
@@ -2113,12 +2151,29 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
 app.get('/api/payments/verify/:reference', asyncRoute(async (request: Request, response: Response) => {
   if (!paystackSecret) fail(503, 'Payments are not configured.');
   const reference = String(request.params.reference || '');
-  const order = state.orders.find((item) => item.reference === reference);
+  const order = state.orders.find((item) => item.reference === reference || (Array.isArray(item.balanceReferences) && item.balanceReferences.includes(reference)));
   if (!order) fail(404, 'Order not found.');
   if (order.paymentStatus === 'paid') return response.json({ order: safeOrder(order) });
   const payment = await paystackRequest(`transaction/verify/${encodeURIComponent(reference)}`);
   await completePayment(reference, payment);
   response.json({ order: safeOrder(order) });
+}));
+
+app.post('/api/orders/:reference/pay-balance', asyncRoute(async (request: Request, response: Response) => {
+  if (!paystackSecret) fail(503, 'Online payments are temporarily unavailable. Please try again later.');
+  const user = authenticatedUser(request);
+  const order = state.orders.find((item) => item.reference === request.params.reference);
+  if (!order || !user || order.userId !== user.id) fail(404, 'Order not found.');
+  if (order.paymentStatus !== 'part-paid') fail(409, order.paymentStatus === 'paid' ? 'This order is already fully paid.' : 'The first part of this order has not been paid yet.');
+  const balanceReference = `${order.reference}-P2-${randomBytes(3).toString('hex')}`;
+  const payment = await paystackRequest('transaction/initialize', {
+    email: order.email, amount: order.balanceKobo, currency: 'NGN', reference: balanceReference,
+    callback_url: callbackUrl,
+    metadata: { order_id: order.id, booking_id: order.bookingId, instalment: 'balance', custom_fields: [{ display_name: 'Unishop order', variable_name: 'unishop_order', value: order.reference }] }
+  });
+  order.balanceReferences = [...(order.balanceReferences || []), balanceReference];
+  saveState();
+  response.status(201).json({ reference: balanceReference, authorizationUrl: payment.authorization_url, amountNaira: order.balanceNaira });
 }));
 
 app.get('/api/orders/:reference', (request: Request, response: Response) => {

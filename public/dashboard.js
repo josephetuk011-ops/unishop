@@ -305,15 +305,20 @@ function trackingPanel(orders) {
   }).join('');
   return panel('Track goods', `<div class="track-list">${cards}</div>`);
 }
+function balanceButton(order) {
+  return order && order.paymentStatus === 'part-paid' ? `<button class="primary-button" data-pay-balance="${escapeHtml(order.reference)}">Pay balance ${formatMoney(order.balanceNaira)}</button>` : '';
+}
 function customerDashboard() {
   const bookings = dashboardData.bookings || [];
   const bookingRowsForCustomer = bookings.map((booking) => {
     let followup = `<span class="status-pill ${escapeHtml(booking.paymentStatus || 'unpaid')}">${escapeHtml(booking.paymentStatus || 'unpaid')}</span>`;
-    if (booking.paymentStatus !== 'paid') followup = `<button class="primary-button" data-pay-service="${escapeHtml(booking.id)}">Pay ${formatMoney(booking.amountNaira)}</button>`;
+    if (booking.paymentStatus === 'part-paid') followup = balanceButton((dashboardData.orders || []).find((order) => order.bookingId === booking.id)) || followup;
+    else if (booking.paymentStatus !== 'paid') followup = `<button class="primary-button" data-pay-service="${escapeHtml(booking.id)}">Pay ${formatMoney(booking.amountNaira)}</button>`;
     if (booking.status === 'completed' && !booking.reviewedAt) followup = `<button class="secondary-button" data-review-booking="${escapeHtml(booking.providerId)}">Rate service</button>`;
     return `<tr><td><strong>${escapeHtml(booking.provider || 'Service provider')}</strong></td><td>${escapeHtml(booking.service || 'Service')}</td><td>${escapeHtml(booking.time)}</td><td><span class="status-pill ${escapeHtml(booking.status)}">${escapeHtml(booking.status)}</span></td><td>${formatMoney(booking.amountNaira)}</td><td>${followup}</td></tr>`;
     const followups = [];
-    if (booking.paymentStatus !== 'paid') followups.push(`<button class="primary-button" data-pay-service="${escapeHtml(booking.id)}">Pay ${formatMoney(booking.amountNaira + 500)}</button>`);
+    if (booking.paymentStatus === 'part-paid') followups.push(balanceButton((dashboardData.orders || []).find((order) => order.bookingId === booking.id)));
+    else if (booking.paymentStatus !== 'paid') followups.push(`<button class="primary-button" data-pay-service="${escapeHtml(booking.id)}">Pay ${formatMoney(booking.amountNaira + 500)}</button>`);
     if (booking.status === 'completed' && booking.settlementStatus !== 'available') followups.push(`<button class="primary-button" data-confirm-booking="${escapeHtml(booking.id)}">Confirm service complete</button>`);
     if (booking.status === 'completed' && !booking.reviewedAt) followups.push(`<button class="secondary-button" data-review-booking="${escapeHtml(booking.providerId)}">Rate service</button>`);
     if (!followups.length) followups.push(`<span class="status-pill ${escapeHtml(booking.settlementStatus === 'available' ? 'released' : booking.paymentStatus || 'unpaid')}">${escapeHtml(booking.settlementStatus === 'available' ? 'released' : booking.paymentStatus || 'unpaid')}</span>`);
@@ -323,7 +328,7 @@ function customerDashboard() {
   return `${header(`Welcome, ${dashboardData.user.name.split(' ')[0]}`, 'Your Unishop orders and service bookings.')}${trackingPanel(dashboardData.orders || [])}${panel('Your orders', table(['Order', 'Products', 'Total', 'Payment'], orderRows(dashboardData.orders || []), 'Your orders will appear here.'))}${panel('Your service bookings', table(['Provider', 'Service', 'Preferred time', 'Status', 'Price', 'Next step'], bookingRowsForCustomer, 'Your service bookings will appear here.'))}${reviewForm}`;
   const customerOrderRows = (dashboardData.orders || []).map((order) => {
     const confirmation = order.deliveryStatus === 'delivered' && order.settlementStatus !== 'available' ? `<button class="primary-button" data-confirm-delivery="${escapeHtml(order.reference)}">Confirm delivery</button>` : `<span class="status-pill ${escapeHtml(order.settlementStatus === 'available' ? 'released' : order.deliveryStatus || order.paymentStatus)}">${escapeHtml(order.settlementStatus === 'available' ? 'released' : order.deliveryStatus || order.paymentStatus)}</span>`;
-    return `<tr><td><strong>${escapeHtml(order.reference)}</strong><br>${formatDate(order.createdAt)}</td><td>${order.items.map((item) => escapeHtml(item.name)).join(', ')}</td><td>${formatMoney(order.totalNaira)}</td><td><span class="status-pill ${escapeHtml(order.paymentStatus)}">${escapeHtml(order.paymentStatus)}</span><br>${confirmation}</td></tr>`;
+    return `<tr><td><strong>${escapeHtml(order.reference)}</strong><br>${formatDate(order.createdAt)}</td><td>${order.items.map((item) => escapeHtml(item.name)).join(', ')}</td><td>${formatMoney(order.totalNaira)}</td><td><span class="status-pill ${escapeHtml(order.paymentStatus)}">${escapeHtml(order.paymentStatus)}</span><br>${balanceButton(order) || confirmation}</td></tr>`;
   });
   return `${header(`Welcome, ${dashboardData.user.name.split(' ')[0]}`, 'Your Unishop orders and service bookings.')}${panel('Your orders', table(['Order', 'Products', 'Total', 'Payment and delivery'], customerOrderRows, 'Your orders will appear here.'))}${panel('Your service bookings', table(['Provider', 'Service', 'Preferred time', 'Status', 'Price', 'Next step'], bookingRowsForCustomer, 'Your service bookings will appear here.'))}${reviewForm}`;
 }
@@ -543,9 +548,20 @@ document.addEventListener('click', async (event) => {
   if (payService) {
     payService.disabled = true;
     try {
-      const payment = await api('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: payService.dataset.payService }) });
+      const booking = (dashboardData.bookings || []).find((item) => item.id === payService.dataset.payService);
+      const plan = await window.UnishopPayPlan.choose(((booking && booking.amountNaira) || 0) + 500);
+      if (!plan) { payService.disabled = false; return; }
+      const payment = await api('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: payService.dataset.payService, paymentPlan: plan }) });
       window.location.assign(payment.authorizationUrl);
     } catch (error) { notify(error.message); payService.disabled = false; }
+  }
+  const payBalance = event.target.closest('[data-pay-balance]');
+  if (payBalance) {
+    payBalance.disabled = true;
+    try {
+      const payment = await api(`/api/orders/${encodeURIComponent(payBalance.dataset.payBalance)}/pay-balance`, { method: 'POST' });
+      window.location.assign(payment.authorizationUrl);
+    } catch (error) { notify(error.message); payBalance.disabled = false; }
   }
   const reviewButton = event.target.closest('[data-review-booking]');
   if (reviewButton) {
