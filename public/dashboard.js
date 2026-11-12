@@ -444,6 +444,47 @@ document.addEventListener('submit', async (event) => {
 });
 
 
+function photoManager(urls) {
+  const photoUrl = (u) => (u && u.startsWith('/') ? u : u);
+  return `<div class="full photo-manager" data-photo-manager data-photos="${escapeHtml(JSON.stringify(urls))}"><span class="form-help">Photos: the first one is the cover. Remove a photo, make it the cover, or add more (up to 10 in total).</span><div class="photo-edit-grid"></div><label class="secondary-button photo-add">+ Add photos<input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden data-photo-add></label></div>`;
+}
+function renderPhotoManager(box) {
+  const urls = JSON.parse(box.dataset.photos || '[]');
+  box.querySelector('.photo-edit-grid').innerHTML = urls.map((url, index) => `<figure class="photo-edit${index === 0 ? ' cover' : ''}"><img src="${escapeHtml(url)}" alt="Photo ${index + 1}">${index === 0 ? '<figcaption>Cover</figcaption>' : `<button type="button" class="photo-cover" data-photo-cover="${index}">Make cover</button>`}<button type="button" class="photo-remove" data-photo-remove="${index}" aria-label="Remove photo ${index + 1}">×</button></figure>`).join('');
+}
+function initPhotoManagers(root) {
+  root.querySelectorAll('[data-photo-manager]').forEach(renderPhotoManager);
+}
+document.addEventListener('click', (event) => {
+  const box = event.target.closest('[data-photo-manager]');
+  if (!box) return;
+  const urls = JSON.parse(box.dataset.photos || '[]');
+  const remove = event.target.closest('[data-photo-remove]');
+  const cover = event.target.closest('[data-photo-cover]');
+  if (remove) {
+    if (urls.length <= 1) { notify('Keep at least one photo. Add a new one before removing this.'); return; }
+    urls.splice(Number(remove.dataset.photoRemove), 1);
+  } else if (cover) {
+    const [picked] = urls.splice(Number(cover.dataset.photoCover), 1);
+    urls.unshift(picked);
+  } else return;
+  box.dataset.photos = JSON.stringify(urls);
+  renderPhotoManager(box);
+});
+document.addEventListener('change', async (event) => {
+  if (!event.target.matches('[data-photo-add]')) return;
+  const box = event.target.closest('[data-photo-manager]');
+  const urls = JSON.parse(box.dataset.photos || '[]');
+  const files = [...event.target.files];
+  event.target.value = '';
+  if (!files.length) return;
+  if (urls.length + files.length > 10) { notify('A listing can have up to 10 photos.'); return; }
+  try {
+    const uploaded = await uploadFiles(files);
+    box.dataset.photos = JSON.stringify(urls.concat(uploaded.images));
+    renderPhotoManager(box);
+  } catch (error) { notify(error.message); }
+});
 function productEditForm(product) {
   const sized = Array.isArray(product.sizes) && product.sizes.length > 0;
   const categories = productCategoryGroups.map((entry) => `<optgroup label="${escapeHtml(entry.group)}">${entry.items.map((item) => `<option value="${escapeHtml(item)}"${item === product.category ? ' selected' : ''}>${escapeHtml(item)}</option>`).join('')}</optgroup>`).join('');
@@ -451,10 +492,10 @@ function productEditForm(product) {
   const stock = sized
     ? `<label class="form-field full stock-field">Quantity per size <span class="form-help">Change the numbers after a restock, like S:5, M:3, L:2.</span><input name="sizes" value="${escapeHtml(product.sizes.map((row) => `${row.label}:${row.quantity}`).join(', '))}" maxlength="200" required></label>`
     : `<label class="form-field stock-field">Add to stock <span class="form-help">Now: ${product.stock === undefined || product.stock === null ? 'not tracked' : product.stock}. Enter how many you are adding.</span><input name="addQuantity" type="number" min="0" max="100000" step="1" value="0"></label><label class="form-field stock-field">Or set total in stock<input name="quantity" type="number" min="0" max="100000" step="1" placeholder="Keep"></label>`;
-  return `<form class="form-grid edit-form" data-product-edit-form="${escapeHtml(product.id)}"><label class="form-field full">Product name<input name="name" required minlength="3" maxlength="100" value="${escapeHtml(product.name)}"></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="1" value="${Number(product.price)}"></label><label class="form-field">Category<select name="category" required>${legacy}${categories}</select></label><div class="full" data-spec-fields>${specFieldsHtml(product.category, product.specs || {})}</div>${availabilityFields(product)}${stock}<label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000">${escapeHtml(product.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
+  return `<form class="form-grid edit-form" data-product-edit-form="${escapeHtml(product.id)}"><label class="form-field full">Product name<input name="name" required minlength="3" maxlength="100" value="${escapeHtml(product.name)}"></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="1" value="${Number(product.price)}"></label><label class="form-field">Category<select name="category" required>${legacy}${categories}</select></label><div class="full" data-spec-fields>${specFieldsHtml(product.category, product.specs || {})}</div>${availabilityFields(product)}${stock}<label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000">${escapeHtml(product.description || '')}</textarea></label>${photoManager(product.images && product.images.length ? product.images : [product.image].filter(Boolean))}<div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
 }
 function serviceEditForm(listing) {
-  return `<form class="form-grid edit-form" data-service-edit-form="${escapeHtml(listing.id)}"><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" value="${escapeHtml(listing.title)}"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500">${escapeHtml(listing.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
+  return `<form class="form-grid edit-form" data-service-edit-form="${escapeHtml(listing.id)}"><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" value="${escapeHtml(listing.title)}"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500">${escapeHtml(listing.description || '')}</textarea></label>${photoManager(listing.portfolio || [])}<div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
 }
 document.addEventListener('click', (event) => {
   const editProduct = event.target.closest('[data-edit-product]');
@@ -467,6 +508,7 @@ document.addEventListener('click', (event) => {
     body.innerHTML = product ? productEditForm(product) : serviceEditForm(listing);
     const editForm = body.querySelector('[data-product-edit-form]');
     if (editForm) { if (product.preorder) editForm.dataset.wasPreorder = '1'; syncAvailability(editForm); }
+    initPhotoManagers(body);
     body.querySelector('input')?.focus();
     return;
   }
@@ -484,6 +526,8 @@ document.addEventListener('submit', async (event) => {
     if (productForm) {
       const f = form.elements;
       const body = { name: f.name.value, price: Number(f.price.value), category: f.category.value, description: f.description.value, specs: collectSpecs(form) };
+      const photoBox = form.querySelector('[data-photo-manager]');
+      if (photoBox) body.images = JSON.parse(photoBox.dataset.photos || '[]');
       if (f.availability.value === 'preorder') { body.preorder = true; body.preorderDays = Number(f.preorderDays.value); }
       else if (productForm.dataset.wasPreorder === '1') body.preorder = false;
       if (body.preorder) { /* no stock for pre-orders */ }
@@ -494,7 +538,7 @@ document.addEventListener('submit', async (event) => {
       notify('Product updated. Customers see the new price and stock now.');
     } else {
       const f = form.elements;
-      await api(`/api/provider/listings/${encodeURIComponent(serviceForm.dataset.serviceEditForm)}`, { method: 'PATCH', body: JSON.stringify({ title: f.title.value, description: f.description.value }) });
+      await api(`/api/provider/listings/${encodeURIComponent(serviceForm.dataset.serviceEditForm)}`, { method: 'PATCH', body: JSON.stringify({ title: f.title.value, description: f.description.value, portfolio: JSON.parse(form.querySelector('[data-photo-manager]').dataset.photos || '[]') }) });
       notify('Service updated.');
     }
     await refreshDashboard();
