@@ -542,3 +542,5 @@ body.dark-theme .site-header .header-actions button{background:#1d2738;border-co
 .welcome-photo{width:min(380px,36vw);aspect-ratio:1;object-fit:cover;border-radius:0}
 @media(max-width:700px){.welcome-strip:not([hidden]){grid-template-columns:minmax(0,1fr) 140px}.welcome-photo{width:140px;align-self:center;margin:14px 0;border-radius:14px}.welcome-copy{padding-top:20px}}
 @media(max-width:700px){.welcome-copy{min-width:0}.welcome-strip{gap:6px 14px}.welcome-photo{width:130px}.welcome-strip:not([hidden]){grid-template-columns:minmax(0,1fr) 130px}}
+
+.sub-pills{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px;padding-top:4px}.category-pill.sub{font-size:13px;padding:6px 12px;opacity:.9}

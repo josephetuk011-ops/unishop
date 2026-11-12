@@ -20,6 +20,20 @@ const readStorage = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; }
 };
 let selectedCategory = 'All';
+let selectedSub = 'All';
+// Top-level groups come from the server (/api/product-categories). Products map to a group by category, services by niche.
+let categoryGroups = [];
+const legacyGroups = { Home: 'Home and living', Fashion: 'Fashion and accessories', Beauty: 'Beauty and health', Tech: 'Phones and electronics', Food: 'Food and drinks' };
+const nicheGroups = {
+  'Barbing': 'Beauty and health', 'Hair dressing': 'Beauty and health', 'Makeup': 'Beauty and health', 'Manicure and pedicure': 'Beauty and health', 'Therapist': 'Beauty and health',
+  'Fashion designing': 'Fashion and accessories', 'Laundry and ironing': 'Fashion and accessories', 'Dry cleaning': 'Fashion and accessories',
+  'Phone repair': 'Phones and electronics', 'Web and app design': 'Phones and electronics', 'Graphic design': 'Phones and electronics',
+  'Cooking': 'Food and drinks', 'Cleaning': 'Home and living', 'Decorating': 'Home and living', 'Grass clearing': 'Home and living', 'Electrician': 'Building and farming', 'Plumber': 'Building and farming',
+  'Mechanic': 'Vehicles', 'Event planning': 'Arts, gifts and events', 'Photographer': 'Arts, gifts and events', 'Tutoring': 'Baby, kids and school'
+};
+const groupOfProduct = (product) => legacyGroups[product.category] || categoryGroups.find((entry) => entry.items.includes(product.category))?.group || 'Pets and other';
+const groupOfService = (provider) => nicheGroups[provider.niche || provider.category || provider.trade] || '';
+const selectedGroup = () => legacyGroups[selectedCategory] || selectedCategory;
 let searchTerm = '';
 let selectedAuthRole = 'customer';
 let selectedAuthMode = 'login';
@@ -125,18 +139,23 @@ function renderVisionTicker() {
 
 function renderCategoryPills() {
   const pills = document.querySelector('.category-pills');
-  if (!pills) return;
-  const legacyLabels = { Home: 'Home & living', Fashion: 'Fashion', Beauty: 'Beauty', Tech: 'Tech', Food: 'Food & pantry' };
-  const present = [...new Set(products.map((product) => product.category).filter(Boolean))].sort((a, b) => (legacyLabels[a] || a).localeCompare(legacyLabels[b] || b));
-  if (selectedCategory !== 'All' && !present.includes(selectedCategory)) selectedCategory = 'All';
+  if (!pills || !categoryGroups.length) return;
+  const goodsCount = (group) => products.filter((product) => groupOfProduct(product) === group).length;
+  const serviceCount = (group) => ['goods', 'brands'].includes(marketMode) ? 0 : providers.filter((provider) => groupOfService(provider) === group).length;
+  const present = categoryGroups.map((entry) => entry.group).filter((group) => goodsCount(group) + serviceCount(group) > 0);
+  if (selectedCategory !== 'All' && !present.includes(selectedGroup())) selectedCategory = 'All';
+  if (selectedCategory === 'All') selectedSub = 'All';
   const count = pills.querySelector('[data-category="All"] span')?.textContent || String(products.length);
-  pills.innerHTML = `<button class="category-pill${selectedCategory === 'All' ? ' selected' : ''}" data-category="All">All categories <span>${count}</span></button>` + present.map((name) => `<button class="category-pill${selectedCategory === name ? ' selected' : ''}" data-category="${escapeShortText(name)}">${escapeShortText(legacyLabels[name] || name)}</button>`).join('');
+  const group = selectedCategory === 'All' ? '' : selectedGroup();
+  const subs = group ? [...new Set(products.filter((product) => groupOfProduct(product) === group).map((product) => product.category))].sort() : [];
+  pills.innerHTML = `<button class="category-pill${selectedCategory === 'All' ? ' selected' : ''}" data-category="All">All categories <span>${count}</span></button>` + present.map((name) => `<button class="category-pill${group === name ? ' selected' : ''}" data-category="${escapeShortText(name)}">${escapeShortText(name)} <span>${goodsCount(name) + serviceCount(name)}</span></button>`).join('')
+    + (subs.length > 1 ? `<div class="sub-pills" aria-label="Narrow by type">${subs.map((name) => `<button class="category-pill sub${selectedSub === name ? ' selected' : ''}" data-sub="${escapeShortText(name)}">${escapeShortText(name)}</button>`).join('')}</div>` : '');
 }
 
 function renderProducts() {
   renderCategoryPills();
   const goods = products.filter((product) => {
-    const matchesCategory = selectedCategory === 'All' || product.category === selectedCategory;
+    const matchesCategory = selectedCategory === 'All' || (groupOfProduct(product) === selectedGroup() && (selectedSub === 'All' || product.category === selectedSub));
     const matchesSearch = `${product.name} ${product.seller} ${product.brandProfile?.businessName || ''} ${product.category}`.toLowerCase().includes(searchTerm);
     return matchesCategory && matchesSearch;
   });
@@ -161,7 +180,8 @@ function renderProducts() {
   const services = providers.filter((provider) => {
     const matchesNiche = activeNiche === 'All' || provider.niche === activeNiche || provider.category === activeNiche || provider.trade === activeNiche;
     const matchesSearch = `${provider.provider || provider.name} ${provider.title || provider.trade} ${provider.niche || ''} ${provider.neighbourhood || ''}`.toLowerCase().includes(searchTerm);
-    return matchesNiche && matchesSearch;
+    const matchesGroup = selectedCategory === 'All' || (selectedSub === 'All' && groupOfService(provider) === selectedGroup());
+    return matchesNiche && matchesSearch && matchesGroup;
   });
   const serviceMarkup = ['goods', 'brands'].includes(marketMode) ? [] : services.map((provider, index) => {
     const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
@@ -190,7 +210,7 @@ function renderProducts() {
   const demoServices = ['goods', 'brands'].includes(marketMode) ? [] : services.filter((provider) => !isRealService(provider)).sort((left, right) => String(left.niche || left.category || left.trade || '').localeCompare(String(right.niche || right.category || right.trade || '')));
   const goodsMarkupByItem = new Map(goods.map((product, index) => [product, goodsMarkup[index]]));
   const newest = [...realGoods.map((item) => ({ item, at: addedAt(item), html: goodsMarkupByItem.get(item) })), ...realServices.map((item) => ({ item, at: serviceAddedAt(item), html: serviceMarkupByItem.get(item) }))].sort((left, right) => right.at - left.at);
-  const topLabel = marketMode === 'services' ? 'Service providers' : marketMode === 'goods' ? 'New from vendors' : 'New from vendors and providers';
+  const topLabel = selectedCategory !== 'All' ? `${selectedGroup()}${selectedSub !== 'All' ? ` · ${selectedSub}` : ''}` : marketMode === 'services' ? 'Service providers' : marketMode === 'goods' ? 'New from vendors' : 'New from vendors and providers';
   // Each section ranks its own listings on top: All alternates goods and services, Brands groups goods by shop.
   let groupedNew;
   if (marketMode === 'brands') {
@@ -217,7 +237,7 @@ function renderProducts() {
   const groupedGoods = withHeadings(demoGoods, demoGoods.map((product) => goodsMarkupByItem.get(product)), (key) => categoryLabels[key] || key, (product) => product.category, 'goods');
   const groupedServices = withHeadings(demoServices, demoServices.map((provider) => serviceMarkupByItem.get(provider)), (key) => key, (provider) => provider.niche || provider.category || provider.trade, 'services');
   const listings = [...goodsMarkup, ...serviceMarkup];
-  document.querySelector('.category-pill[data-category="All"] span').textContent = String(listings.length);
+  document.querySelector('.category-pill[data-category="All"] span').textContent = String(products.length + (['goods', 'brands'].includes(marketMode) ? 0 : providers.length));
   productGrid.innerHTML = [...groupedNew, ...groupedGoods, ...groupedServices].join('') || `<p class="no-results">${marketMode === 'services' && activeNiche !== 'All' ? `No ${activeNiche.toLowerCase()} listings found yet.` : 'No listings match that search. Try another category.'}</p>`;
   const nicheGrid = document.querySelector('#marketplace-niches');
   nicheGrid.innerHTML = serviceNiches.map(([name, image]) => `<button class="service-niche-card ${activeNiche === name ? 'selected' : ''}" data-service-niche="${name}"><img src="${imageUrl(image, 640)}" alt="${name} service in Uyo" loading="lazy"><span>${name}</span><b>Explore ↗</b></button>`).join('');
@@ -650,10 +670,17 @@ document.querySelector('#search-input').addEventListener('input', (event) => {
   renderProducts();
 });
 
+fetch('/api/product-categories').then((response) => response.ok ? response.json() : { groups: [] }).then((data) => { categoryGroups = data.groups || []; renderProducts(); }).catch(() => {});
 document.querySelector('.category-pills').addEventListener('click', (event) => {
   const pill = event.target.closest('.category-pill');
   if (!pill) return;
+  if (pill.dataset.sub !== undefined) {
+    selectedSub = selectedSub === pill.dataset.sub ? 'All' : pill.dataset.sub;
+    renderProducts();
+    return;
+  }
   selectedCategory = pill.dataset.category;
+  selectedSub = 'All';
   activeNiche = 'All';
   searchTerm = '';
   document.querySelector('#search-input').value = '';
