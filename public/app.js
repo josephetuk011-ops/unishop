@@ -84,7 +84,7 @@ function renderShorts() {
   const serviceCards = shortServices.map((provider) => {
     const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
     const title = provider.title || provider.trade || provider.niche || 'Local service';
-    return `<article class="short-card"><div class="short-media"><video src="${escapeShortText(provider.video)}" poster="${escapeShortText(imageUrl(image, 640))}" controls muted playsinline preload="metadata"></video>${shortOverlay(provider.provider || provider.name || 'Service provider', title)}</div><div class="short-card-copy"><p class="short-card-source">${escapeShortText(provider.provider || provider.name || 'Service provider')}</p><h3>${escapeShortText(title)}</h3><div class="short-card-action"><button class="negotiate-button" data-short-book="${escapeShortText(provider.id)}">Proceed to negotiation</button></div></div></article>`;
+    return `<article class="short-card"><div class="short-media"><video src="${escapeShortText(provider.video)}" poster="${escapeShortText(imageUrl(image, 640))}" controls muted playsinline preload="metadata"></video>${shortOverlay(provider.provider || provider.name || 'Service provider', title)}</div><div class="short-card-copy"><p class="short-card-source">${escapeShortText(provider.provider || provider.name || 'Service provider')}</p><h3>${escapeShortText(title)}</h3><div class="short-card-action"><button class="negotiate-button" data-short-book="${escapeShortText(provider.id)}">View service</button></div></div></article>`;
   });
   const cards = [...productCards, ...serviceCards];
   shortsGrid.innerHTML = cards.join('') || '<p class="shorts-empty">No product or service shorts yet.</p>';
@@ -165,7 +165,7 @@ function renderProducts() {
   });
   const serviceMarkup = ['goods', 'brands'].includes(marketMode) ? [] : services.map((provider, index) => {
     const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
-    return `<article class="product-card service-market-card" style="animation-delay:${(index + goodsMarkup.length) * 35}ms"><button class="service-market-image" data-view-service="${provider.id}" aria-label="View details of ${provider.title || provider.trade}"><img src="${imageUrl(image, 760)}" alt="${provider.title || provider.trade} by ${provider.provider || provider.name}" loading="lazy"><span class="service-image-tag">${provider.niche || provider.category || 'LOCAL SERVICE'}</span><span class="service-open-label">View service ↗</span></button><div class="product-details"><div class="product-vendor">${provider.provider || provider.name} · ${provider.neighbourhood || 'Uyo, Akwa Ibom'}</div><h3 class="product-name">${provider.title || provider.trade}</h3><div class="product-bottom"><span class="product-rating"><b>★</b> ${Number(provider.rating || 0).toFixed(1)} <span>(${provider.reviewCount || provider.reviews || 0})</span></span>${provider.online ? '<span class="online-dot">Online</span>' : ''}</div><div class="product-bottom"><button class="negotiate-button" data-book="${provider.id}">Proceed to negotiation</button></div></div></article>`;
+    return `<article class="product-card service-market-card" style="animation-delay:${(index + goodsMarkup.length) * 35}ms"><button class="service-market-image" data-view-service="${provider.id}" aria-label="View details of ${provider.title || provider.trade}"><img src="${imageUrl(image, 760)}" alt="${provider.title || provider.trade} by ${provider.provider || provider.name}" loading="lazy"><span class="service-image-tag">${provider.niche || provider.category || 'LOCAL SERVICE'}</span><span class="service-open-label">View service ↗</span></button><div class="product-details"><div class="product-vendor">${provider.provider || provider.name} · ${provider.neighbourhood || 'Uyo, Akwa Ibom'}</div><h3 class="product-name">${provider.title || provider.trade}</h3><div class="product-bottom"><span class="product-rating"><b>★</b> ${Number(provider.rating || 0).toFixed(1)} <span>(${provider.reviewCount || provider.reviews || 0})</span></span>${provider.online ? '<span class="online-dot">Online</span>' : ''}</div><div class="product-bottom"><button class="negotiate-button" data-book="${provider.id}">View service</button></div></div></article>`;
   });
   const withHeadings = (items, markup, labelFor, keyFor, kind) => {
     const output = [];
@@ -698,7 +698,8 @@ productGrid.addEventListener('click', (event) => {
   }
   const viewService = event.target.closest('[data-view-service]');
   if (viewService) { location.assign(`/service.html?id=${encodeURIComponent(viewService.dataset.viewService)}`); return; }
-  if (bookButton) { openBooking(bookButton.dataset.book); return; }
+  // Viewing never needs an account: the button opens the service page, where signing in is only asked when negotiating.
+  if (bookButton) { location.assign(`/service.html?id=${encodeURIComponent(bookButton.dataset.book)}`); return; }
   if (productDetailButton) openProductDetail(productDetailButton.dataset.productDetail);
 });
 
