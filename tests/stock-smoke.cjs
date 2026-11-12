@@ -58,6 +58,12 @@ const server = app.listen(0, async () => {
     assert.equal(senator.status, 201, JSON.stringify(senator.data));
     assert.equal(senator.data.product.specs.waist, 34);
     assert.equal((await send('POST', '/api/seller/products', { category: "Men's clothing", description: 'Senator wear.', price: 25000, image: '/uploads/shirt.jpg', name: 'Bad set', quantity: 3, specs: { material: 'Cotton', madeToMeasure: 'Both', waist: -4 } }, st)).status, 400);
+    const wigBase = { category: 'Hair, wigs and extensions', description: 'Bone straight wig.', price: 90000, image: '/uploads/shirt.jpg', name: 'Bone straight wig', quantity: 2 };
+    assert.equal((await send('POST', '/api/seller/products', { ...wigBase, specs: { style: 'Bob' } }, st)).status, 400, 'hair type is required for wigs');
+    const wig = await send('POST', '/api/seller/products', { ...wigBase, specs: { hairType: '100% human hair', wigLength: 22, density: '180%', deliveryTime: 'Made to order', returnPolicy: 'No return on wigs' } }, st);
+    assert.equal(wig.status, 201, JSON.stringify(wig.data));
+    assert.equal(wig.data.product.specs.density, '180%');
+    assert.equal((await send('POST', '/api/seller/products', { category: 'Perfumes and fragrances', description: 'A scent.', price: 20000, image: '/uploads/shirt.jpg', name: 'Scent', quantity: 2, specs: { brand: 'Lattafa', fragrance: 'Oud' } }, st)).status, 400, 'original or inspired is required');
     const moved = await send('PATCH', `/api/seller/products/${senator.data.product.id}`, { category: 'Furniture' }, st);
     assert.equal(moved.data.product.specs, undefined, 'specs are dropped when the category has no spec form');
     const edited = await send('PATCH', `/api/seller/products/${sneakerId}`, { price: 9500, addQuantity: 6 }, st);

@@ -191,7 +191,7 @@ function sellerDashboard() {
 let productCategoryGroups = [];
 let productSpecs = { families: {}, categories: {} };
 function specFieldsHtml(category, values = {}) {
-  const family = productSpecs.families[productSpecs.categories[category]];
+  const family = productSpecs.families[productSpecs.categories[category] || 'general'];
   if (!family) return '';
   const fields = family.fields.map((field) => {
     const value = values[field.key] ?? '';
