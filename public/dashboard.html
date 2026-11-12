@@ -19,6 +19,8 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/dashboard.css">
   <link rel="stylesheet" href="/profile.css">
+  <link rel="stylesheet" href="/chat.css">
+  <script src="/chat.js" defer></script>
   <script src="/dashboard.js" defer></script>
 </head>
 <body>
@@ -31,6 +33,7 @@
         <a href="#profile" data-view="profile" id="profile-nav-link"><span>◉</span> Profile</a>
         <a href="#listings" data-view="listings"><span>◇</span><span id="listing-nav-label">My listings</span></a>
         <a href="#activity" data-view="activity"><span>≡</span><span id="activity-nav-label">Activity</span></a>
+        <a href="#messages" data-view="messages" id="messages-nav-link" hidden><span>✉</span><span>Messages</span><b class="nav-badge" id="messages-badge"></b></a>
         <a href="#earnings" data-view="earnings"><span>₦</span><span id="earnings-nav-label">Earnings</span></a>
       </nav>
       <div class="sidebar-bottom"><div class="profile-mini"><span class="profile-avatar" id="profile-initials">U</span><span><strong id="profile-name">Loading</strong><small id="profile-detail">Uyo, Akwa Ibom</small></span></div><button class="signout-button" id="signout-button">Sign out</button><a class="back-link" href="/">← Back to marketplace</a></div>
