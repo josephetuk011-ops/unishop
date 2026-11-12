@@ -68,7 +68,7 @@ function escapeShortText(value = '') {
 }
 
 function shortOverlay(seller, title) {
-  return `<button class="short-share" type="button" data-short-share="${escapeShortText(title)}" aria-label="Share this short"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M18 16a3 3 0 0 0-2.2 1l-6.6-3.3a3 3 0 0 0 0-1.4L15.800 8a3 3 0 1 0-.8-1.800L8.400 9.500a3 3 0 1 0 0 5l6.600 3.300A3 3 0 1 0 18 16z"/></svg></button><div class="short-watermark" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""><span>@${escapeShortText(seller)}</span></div>`;
+  return `<button class="short-share" type="button" data-short-share="${escapeShortText(title)}" aria-label="Share this short"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M18 16a3 3 0 0 0-2.2 1l-6.6-3.3a3 3 0 0 0 0-1.4L15.800 8a3 3 0 1 0-.8-1.800L8.400 9.500a3 3 0 1 0 0 5l6.600 3.300A3 3 0 1 0 18 16z"/></svg></button><div class="short-watermark" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""><span>UNISHOP</span></div>`;
 }
 
 function stockBadge(product) {
@@ -91,16 +91,18 @@ function renderDetailExtras(product) {
   document.querySelector('#detail-add-to-bag').disabled = product.stock === 0;
 }
 
+let shortItems = [];
 function renderShorts() {
   const shortProducts = products.filter((product) => product.video && Number(product.videoDuration) > 0 && Number(product.videoDuration) <= 30);
   const shortServices = providers.filter((provider) => provider.video && Number(provider.videoDuration) > 0 && Number(provider.videoDuration) <= 30);
-  const productCards = shortProducts.map((product) => `<article class="short-card"><div class="short-media"><video src="${escapeShortText(product.video)}" poster="${escapeShortText(imageUrl(product.image, 640))}" controls muted playsinline preload="metadata"></video>${shortOverlay(product.seller || 'Local vendor', product.name)}</div><div class="short-card-copy"><p class="short-card-source">${escapeShortText(product.seller || 'Local vendor')}</p><h3>${escapeShortText(product.name)}</h3><div class="short-card-action"><strong>${formatPrice(Number(product.price))}</strong><button class="add-button" data-short-add="${escapeShortText(product.id)}">Add to bag</button></div></div></article>`);
-  const serviceCards = shortServices.map((provider) => {
-    const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
-    const title = provider.title || provider.trade || provider.niche || 'Local service';
-    return `<article class="short-card"><div class="short-media"><video src="${escapeShortText(provider.video)}" poster="${escapeShortText(imageUrl(image, 640))}" controls muted playsinline preload="metadata"></video>${shortOverlay(provider.provider || provider.name || 'Service provider', title)}</div><div class="short-card-copy"><p class="short-card-source">${escapeShortText(provider.provider || provider.name || 'Service provider')}</p><h3>${escapeShortText(title)}</h3><div class="short-card-action"><button class="negotiate-button" data-short-book="${escapeShortText(provider.id)}">View service</button></div></div></article>`;
-  });
-  const cards = [...productCards, ...serviceCards];
+  shortItems = [
+    ...shortProducts.map((product) => ({ kind: 'product', id: product.id, video: product.video, poster: imageUrl(product.image, 640), seller: product.seller || 'Local vendor', userId: product.userId, title: product.name, price: Number(product.price) })),
+    ...shortServices.map((provider) => {
+      const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
+      return { kind: 'service', id: provider.id, video: provider.video, poster: imageUrl(image, 640), seller: provider.provider || provider.name || 'Service provider', userId: provider.userId, title: provider.title || provider.trade || provider.niche || 'Local service' };
+    })
+  ];
+  const cards = shortItems.map((item, index) => `<article class="short-card"><div class="short-media" data-short-open="${index}" role="button" tabindex="0" aria-label="Watch ${escapeShortText(item.title)}"><video src="${escapeShortText(item.video)}#t=0.1" poster="${escapeShortText(item.poster)}" muted playsinline preload="metadata"></video><span class="short-play" aria-hidden="true">▶</span>${shortOverlay(item.seller, item.title)}</div><div class="short-card-copy"><p class="short-card-source">${escapeShortText(item.seller)}</p><h3>${escapeShortText(item.title)}</h3><div class="short-card-action">${item.kind === 'product' ? `<strong>${formatPrice(item.price)}</strong><button class="add-button" data-short-add="${escapeShortText(item.id)}">Add to bag</button>` : `<button class="negotiate-button" data-short-book="${escapeShortText(item.id)}">View service</button>`}</div></div></article>`);
   shortsGrid.innerHTML = cards.join('') || '<p class="shorts-empty">No product or service shorts yet.</p>';
 }
 
@@ -747,7 +749,65 @@ async function shareShort(title) {
   try { await navigator.clipboard.writeText(link); showToast('Link copied.'); } catch { showToast(link); }
 }
 
+// Full-screen shorts feed: swipe or scroll up for the next short; seller account and add to bag sit under each video.
+let shortsViewer;
+function closeShortsViewer() {
+  if (!shortsViewer) return;
+  shortsViewer.querySelectorAll('video').forEach((video) => video.pause());
+  shortsViewer.remove();
+  shortsViewer = undefined;
+  document.body.classList.remove('shorts-open');
+}
+function openShortsViewer(startIndex) {
+  closeShortsViewer();
+  let muted = true;
+  const slide = (item, index) => `<section class="sv-slide" data-index="${index}"><video src="${escapeShortText(item.video)}" poster="${escapeShortText(item.poster)}" loop muted playsinline preload="${Math.abs(index - startIndex) <= 1 ? 'auto' : 'none'}"></video><div class="short-watermark sv-watermark" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""><span>UNISHOP</span></div><div class="sv-info"><a class="sv-seller" ${item.userId ? `href="/vendor.html?id=${encodeURIComponent(item.userId)}"` : ''}>@${escapeShortText(item.seller)}<small>View account</small></a><h3>${escapeShortText(item.title)}</h3><div class="sv-actions">${item.kind === 'product' ? `<strong>${formatPrice(item.price)}</strong><button type="button" class="add-button" data-sv-add="${escapeShortText(item.id)}">Add to bag</button>` : `<button type="button" class="negotiate-button" data-sv-book="${escapeShortText(item.id)}">View service</button>`}</div></div></section>`;
+  shortsViewer = document.createElement('div');
+  shortsViewer.className = 'shorts-viewer';
+  shortsViewer.setAttribute('role', 'dialog');
+  shortsViewer.setAttribute('aria-label', 'Shorts');
+  shortsViewer.innerHTML = `<button type="button" class="sv-close" aria-label="Close shorts">×</button><button type="button" class="sv-sound" aria-label="Turn sound on">🔇</button><div class="sv-track">${shortItems.map(slide).join('')}</div><p class="sv-hint">Swipe up for the next short</p>`;
+  document.body.append(shortsViewer);
+  document.body.classList.add('shorts-open');
+  const track = shortsViewer.querySelector('.sv-track');
+  const slides = [...track.querySelectorAll('.sv-slide')];
+  const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+    const video = entry.target.querySelector('video');
+    if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
+      video.muted = muted;
+      video.play().catch(() => {});
+      slides.forEach((other, i) => { if (Math.abs(i - Number(entry.target.dataset.index)) <= 1) other.querySelector('video').preload = 'auto'; });
+    } else video.pause();
+  }), { root: track, threshold: [0, 0.6, 1] });
+  slides.forEach((node) => observer.observe(node));
+  slides[startIndex]?.scrollIntoView();
+  shortsViewer.addEventListener('click', (event) => {
+    if (event.target.closest('.sv-close')) { closeShortsViewer(); return; }
+    const sound = event.target.closest('.sv-sound');
+    if (sound) { muted = !muted; sound.textContent = muted ? '🔇' : '🔊'; shortsViewer.querySelectorAll('video').forEach((video) => { video.muted = muted; }); return; }
+    const add = event.target.closest('[data-sv-add]');
+    const book = event.target.closest('[data-sv-book]');
+    if (add) {
+      const product = products.find((item) => item.id === add.dataset.svAdd);
+      if (product && hasSizes(product)) closeShortsViewer();
+      addToCart(add.dataset.svAdd);
+      if (!product || !hasSizes(product)) { add.textContent = 'Added ✓'; setTimeout(() => { add.textContent = 'Add to bag'; }, 1500); }
+      return;
+    }
+    if (book) { closeShortsViewer(); openBooking(book.dataset.svBook); return; }
+    const video = event.target.closest('.sv-slide video');
+    if (video) { if (video.paused) video.play().catch(() => {}); else video.pause(); }
+  });
+}
+document.addEventListener('keydown', (event) => {
+  if (!shortsViewer) return;
+  if (event.key === 'Escape') closeShortsViewer();
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') shortsViewer.querySelector('.sv-track').scrollBy({ top: (event.key === 'ArrowDown' ? 1 : -1) * innerHeight, behavior: 'smooth' });
+});
+
 shortsGrid.addEventListener('click', (event) => {
+  const openNode = event.target.closest('[data-short-open]');
+  if (openNode && !event.target.closest('[data-short-share]')) { openShortsViewer(Number(openNode.dataset.shortOpen)); return; }
   const shareNode = event.target.closest('[data-short-share]');
   if (shareNode) { shareShort(shareNode.dataset.shortShare); return; }
   const addButton = event.target.closest('[data-short-add]');
