@@ -1,6 +1,6 @@
 // Unishop service worker: installable app shell, offline fallback, and push notifications.
 // Bump VERSION to invalidate every cache on the next deploy.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `unishop-shell-${VERSION}`;
 const ASSET_CACHE = `unishop-assets-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
@@ -46,6 +46,17 @@ async function handleNavigation(event) {
 // Static files (css, js, images): serve the cached copy at once and refresh it in the background.
 async function handleAsset(event) {
   const cache = await caches.open(ASSET_CACHE);
+  // Scripts and styles: network first, so a new deploy shows on the very next load instead of one load later.
+  if (/\.(?:css|js)$/i.test(new URL(event.request.url).pathname)) {
+    try {
+      const response = await fetch(event.request);
+      if (response && response.status === 200 && response.type === 'basic') cache.put(event.request, response.clone());
+      return response;
+    } catch {
+      const stale = await cache.match(event.request);
+      return stale || Response.error();
+    }
+  }
   const cached = await cache.match(event.request);
   const refresh = fetch(event.request).then((response) => {
     if (response && response.status === 200 && response.type === 'basic') {
