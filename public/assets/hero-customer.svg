@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 420" role="img" aria-label="A smiling customer holding a Unishop bag in both hands">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a4fc9"/><stop offset="1" stop-color="#172957"/></linearGradient>
+    <clipPath id="c"><rect width="400" height="420" rx="28"/></clipPath>
+  </defs>
+  <g clip-path="url(#c)">
+    <rect width="400" height="420" fill="url(#bg)"/>
+    <circle cx="320" cy="80" r="70" fill="#f2bd50" opacity=".22"/>
+    <circle cx="60" cy="330" r="90" fill="#fff" opacity=".07"/>
+    <!-- body -->
+    <path d="M70 420c0-78 52-118 130-118s130 40 130 118z" fill="#f2bd50"/>
+    <path d="M165 300l35 40 35-40z" fill="#e3a93a"/>
+    <!-- neck + head -->
+    <rect x="182" y="258" width="36" height="46" rx="14" fill="#8a5a3c"/>
+    <ellipse cx="200" cy="205" rx="60" ry="68" fill="#a46b47"/>
+    <!-- hair -->
+    <path d="M138 200c-6-60 34-92 66-90 38 2 62 34 56 90-10-30-30-48-60-48s-52 18-62 48z" fill="#1d1612"/>
+    <!-- face -->
+    <ellipse cx="177" cy="200" rx="6" ry="8" fill="#1d1612"/>
+    <ellipse cx="223" cy="200" rx="6" ry="8" fill="#1d1612"/>
+    <circle cx="179" cy="197" r="2" fill="#fff"/><circle cx="225" cy="197" r="2" fill="#fff"/>
+    <path d="M171 227q29 34 58 0z" fill="#fff" stroke="#6b3a24" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="160" cy="222" r="9" fill="#e58a6a" opacity=".45"/><circle cx="240" cy="222" r="9" fill="#e58a6a" opacity=".45"/>
+    <!-- bag -->
+    <path d="M150 330c0-30 18-44 50-44s50 14 50 44" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" opacity="0"/>
+    <path d="M168 318v-22a32 32 0 0 1 64 0v22" fill="none" stroke="#0f1d44" stroke-width="7" stroke-linecap="round"/>
+    <rect x="120" y="318" width="160" height="102" rx="10" fill="#fff"/>
+    <rect x="120" y="318" width="160" height="16" rx="8" fill="#e8ecf8"/>
+    <!-- Unishop mark: U in a bag -->
+    <g transform="translate(176 346)">
+      <rect x="0" y="6" width="48" height="40" rx="6" fill="#2a4fc9"/>
+      <path d="M12 6v-3a12 12 0 0 1 24 0v3" fill="none" stroke="#2a4fc9" stroke-width="4"/>
+      <path d="M14 18v12a10 10 0 0 0 20 0V18" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+    </g>
+    <text x="200" y="408" text-anchor="middle" font-family="Arial,sans-serif" font-weight="800" font-size="13" letter-spacing="3" fill="#172957">UNISHOP</text>
+    <!-- arms and hands holding both sides -->
+    <path d="M92 420c-16-50-6-92 28-120l24 26c-18 22-22 52-14 94z" fill="#f2bd50"/>
+    <path d="M308 420c16-50 6-92-28-120l-24 26c18 22 22 52 14 94z" fill="#f2bd50"/>
+    <ellipse cx="124" cy="346" rx="17" ry="22" fill="#a46b47"/>
+    <ellipse cx="276" cy="346" rx="17" ry="22" fill="#a46b47"/>
+    <rect x="116" y="338" width="14" height="30" rx="7" fill="#a46b47"/>
+    <rect x="270" y="338" width="14" height="30" rx="7" fill="#a46b47"/>
+  </g>
+</svg>
