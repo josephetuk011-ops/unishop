@@ -536,3 +536,9 @@ body.dark-theme .site-header .header-actions button{background:#1d2738;border-co
 @media(max-width:900px){.site-header{height:auto;flex-wrap:wrap;padding:10px 16px;gap:8px 12px}.site-header .category-nav{order:3;flex:1 0 100%;height:auto;overflow-x:auto}.site-header .category-nav-inner{padding:0}.site-header .header-actions{margin-left:auto}.site-header .header-actions .referral-button span:last-child{display:none}}
 @media(max-width:700px){.welcome-strip:not([hidden]){grid-template-columns:minmax(0,1fr) 130px}.welcome-photo{width:130px}.welcome-copy strong{font-size:24px}.welcome-copy span{font-size:15px}.welcome-actions{grid-column:1/3;grid-row:2;padding-bottom:20px}.welcome-photo{grid-row:1}.site-header .header-actions button{height:36px;padding:0 10px;font-size:13px}.site-header .header-actions .theme-toggle{width:36px}}
 @media(max-width:760px){.site-header .category-nav .sell-link{display:inline-flex}.site-header .category-nav{height:auto;overflow-x:auto}.site-header .category-nav-inner{width:max-content;padding:0 2px;gap:4px}.site-header .category-nav a{white-space:nowrap}}
+/* real photo: square, has its own blue backdrop */
+.welcome-strip:not([hidden]){padding-top:0;padding-bottom:0}
+.welcome-copy{padding-top:30px}
+.welcome-photo{width:min(380px,36vw);aspect-ratio:1;object-fit:cover;border-radius:0}
+@media(max-width:700px){.welcome-strip:not([hidden]){grid-template-columns:minmax(0,1fr) 140px}.welcome-photo{width:140px;align-self:center;margin:14px 0;border-radius:14px}.welcome-copy{padding-top:20px}}
+@media(max-width:700px){.welcome-copy{min-width:0}.welcome-strip{gap:6px 14px}.welcome-photo{width:130px}.welcome-strip:not([hidden]){grid-template-columns:minmax(0,1fr) 130px}}
