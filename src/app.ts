@@ -24,7 +24,7 @@ app.set('trust proxy', 1);
 const scrypt = promisify(scryptCallback);
 const roles = ['customer', 'seller', 'provider', 'dispatch', 'admin'] as const;
 const registrationRoles = ['customer', 'seller', 'provider', 'dispatch'] as const;
-// Dispatch rider sign-in is paused: the admin updates delivery tracking instead. Set DISPATCH_SIGNIN_ENABLED=true to bring riders back.
+// The delivery team can sign up and sign in at /delivery.html. Set DISPATCH_SIGNIN_ENABLED=false to pause it.
 const productCategoryGroups: { group: string; items: string[] }[] = [
   { group: 'Fashion and accessories', items: ["Women's clothing", "Men's clothing", "Kids' clothing", 'Shoes and sandals', 'Bags and luggage', 'Jewelry and watches', 'Fabrics and traditional wear', 'Hair, wigs and extensions', 'Caps, belts and accessories', 'Uniforms and workwear'] },
   { group: 'Beauty and health', items: ['Skincare', 'Makeup', 'Perfumes and fragrances', 'Hair care', 'Nail and beauty tools', 'Wellness and supplements', 'Medical and first aid'] },
@@ -42,7 +42,7 @@ const productCategoryGroups: { group: string; items: string[] }[] = [
 const legacyProductCategories = ['Home', 'Fashion', 'Beauty', 'Tech', 'Food'];
 const validProductCategories = new Set([...productCategoryGroups.flatMap((entry) => entry.items), ...legacyProductCategories]);
 
-const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED === 'true';
+const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED !== 'false';
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
 type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
@@ -680,8 +680,36 @@ function notifyAdmin(input: NotificationInput) {
   sendAdminPhone(input).catch((error) => console.error('Admin phone notification failed:', error.message));
 }
 
+function pickupPoint(userId: string | undefined) {
+  const person = userId ? state.users.find((item) => item.id === userId) : undefined;
+  if (!person) return undefined;
+  return { business: person.businessName || person.name, name: person.name, place: person.placeOfOperation || '' };
+}
+
+function vendorsOfOrder(order: any) {
+  const ids = order.bookingId ? [state.bookings.find((item) => item.id === order.bookingId)?.providerUserId] : (order.items || []).map((item: any) => item.sellerUserId);
+  return [...new Set(ids.filter(Boolean))].map((id) => pickupPoint(id as string)).filter(Boolean) as { business: string; name: string; place: string }[];
+}
+
+// Every delivery team account gets an email (plus the in-app and push alert) when an order or booking is fully paid.
+function notifyDeliveryTeam(order: any) {
+  const team = state.users.filter((member) => member.role === 'dispatch' && !member.suspendedAt);
+  if (!team.length) return;
+  const vendors = vendorsOfOrder(order).map((vendor) => `${vendor.business}${vendor.place ? ` (${vendor.place})` : ''}`).join(', ') || 'the vendor';
+  let input: NotificationInput;
+  if (order.bookingId) {
+    const booking = state.bookings.find((item) => item.id === order.bookingId);
+    input = { title: 'New service booking', body: `${booking?.service || 'A service'} by ${vendors} in ${booking?.neighbourhood || 'Uyo'}, ${booking?.time || 'time to be agreed'}. Reference ${order.reference}. Open the delivery dashboard for details.`, url: '/delivery.html' };
+  } else {
+    const names = (order.items || []).map((item: any) => `${item.quantity} x ${item.name}`).join(', ');
+    input = { title: 'New order to deliver', body: `${names}. Pick up from ${vendors}. Deliver to ${order.neighbourhood || 'Uyo'}. Reference ${order.reference}. Open the delivery dashboard to accept it.`, url: '/delivery.html' };
+  }
+  team.forEach((member) => notifyUser(member.id, input));
+}
+
 function notifyOrderPaid(order: any) {
   const total = formatNaira(order.totalNaira || 0);
+  try { notifyDeliveryTeam(order); } catch (error) { console.error('Delivery team notification failed:', (error as Error).message); }
   if (order.bookingId) {
     const booking = state.bookings.find((item) => item.id === order.bookingId);
     if (booking?.providerUserId) notifyUser(booking.providerUserId, { title: 'New paid booking', body: `${booking.service} in ${booking.neighbourhood} (${booking.time}) was paid for. Open your dashboard to accept it.`, url: '/dashboard.html' });
@@ -1264,6 +1292,7 @@ app.get('/api/dashboard', (request: Request, response: Response) => {
     const riderJobs = jobs.map((order) => {
       const { email, userId, authorizationUrl, ...job } = safeOrder(order);
       job.riderSettlementNaira = order.riderSettlementNaira;
+      job.vendors = vendorsOfOrder(order);
       if (order.dispatchRiderId !== user.id) {
         delete job.address;
         delete job.phone;
@@ -1275,7 +1304,11 @@ app.get('/api/dashboard', (request: Request, response: Response) => {
       }
       return job;
     });
-    return response.json({ role: user.role, user: cleanUser(user), jobs: riderJobs, ...payoutMetrics, metrics: { availableJobs: jobs.filter((order) => !order.dispatchRiderId).length, activeJobs: jobs.filter((order) => order.dispatchRiderId === user.id && order.deliveryStatus !== 'delivered').length, completedJobs: completed.length, grossEarnings: earnings, ...payoutMetrics } });
+    const serviceBookings = state.orders.filter((order) => order.type === 'service' && order.paymentStatus === 'paid').map((order) => {
+      const booking = state.bookings.find((item) => item.id === order.bookingId);
+      return { reference: order.reference, service: booking?.service || 'Service', neighbourhood: booking?.neighbourhood || order.neighbourhood, time: booking?.time, status: booking?.status, totalNaira: order.totalNaira, paidAt: order.paidAt, vendors: vendorsOfOrder(order) };
+    }).reverse();
+    return response.json({ role: user.role, user: cleanUser(user), jobs: riderJobs, serviceBookings, ...payoutMetrics, metrics: { availableJobs: jobs.filter((order) => !order.dispatchRiderId).length, activeJobs: jobs.filter((order) => order.dispatchRiderId === user.id && order.deliveryStatus !== 'delivered').length, completedJobs: completed.length, grossEarnings: earnings, ...payoutMetrics } });
   }
   if (user.role === 'admin') {
     const paidOrders = state.orders.filter((order) => order.paymentStatus === 'paid');
@@ -1602,7 +1635,7 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
   const parsed = registerSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, describeIssues(parsed.error));
   const { name, username, email, password, role, businessName, niche, ref } = parsed.data;
-  if (role === 'dispatch' && !dispatchSignInEnabled()) fail(403, 'Dispatch rider sign-up is paused. Unishop handles deliveries for now.');
+  if (role === 'dispatch' && !dispatchSignInEnabled()) fail(403, 'Delivery team sign-up is paused.');
   const sanitizedName = sanitizeText(name, '');
   const sanitizedUsername = sanitizeText(username, '').toLowerCase();
   const sanitizedEmail = sanitizeText(email, '').toLowerCase();
@@ -1688,7 +1721,7 @@ app.post('/api/auth/login', asyncRoute(async (request: Request, response: Respon
     fail(401, 'Username or password is incorrect.');
   }
   if (user.role === 'admin') fail(403, 'Use the admin portal password to sign in.');
-  if (user.role === 'dispatch' && !dispatchSignInEnabled()) fail(403, 'Dispatch is handled by Unishop for now. Rider sign-in is paused.');
+  if (user.role === 'dispatch' && !dispatchSignInEnabled()) fail(403, 'Delivery team sign-in is paused.');
   if (user.suspendedAt) fail(403, 'This account is suspended. Contact Unishop support for assistance.');
   if (!user.emailVerified && process.env.NODE_ENV !== 'test' && process.env.AUTO_VERIFY_EMAIL === 'false') {
     fail(403, 'Verify your email with the one-time code before logging in.');
