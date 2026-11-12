@@ -15,7 +15,7 @@ import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { detectContactInfo } from './chatGuard';
-import { NotificationInput, adminEmail, getVapidPublicKey, sendAdminPhone, sendEmail, sendPush } from './notifications';
+import { NotificationInput, adminEmail, getVapidPublicKey, sendAdminMessage, sendAdminPhone, sendEmail, sendPush } from './notifications';
 
 dotenv.config();
 
@@ -1031,6 +1031,52 @@ app.get('/api/admin/records', (request, response) => {
   const filtered = search ? records.filter((record) => JSON.stringify(record).toLowerCase().includes(search)) : records;
   response.json({ kind, total: filtered.length, offset, limit, records: filtered.slice(offset, offset + limit) });
 });
+const adminMailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_request, response) => response.status(429).json({ error: 'Too many mail batches this hour. Try again later.' })
+});
+app.get('/api/admin/mail/recipients', (request: Request, response: Response) => {
+  requireAdmin(request);
+  const recipients = state.users
+    .filter((user) => user.role !== 'admin' && user.email)
+    .map((user) => ({ id: user.id, name: (user.role === 'seller' || user.role === 'provider') && user.businessName ? user.businessName : user.name, email: user.email, role: user.role, suspended: Boolean(user.suspendedAt) }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  response.json({ recipients, mailConfigured: Boolean(process.env.RESEND_API_KEY) });
+});
+app.post('/api/admin/mail', adminMailLimiter, asyncRoute(async (request, response) => {
+  const admin = requireAdmin(request);
+  if (!process.env.RESEND_API_KEY) fail(503, 'Email is not set up on this deployment (RESEND_API_KEY is missing).');
+  const subject = typeof request.body?.subject === 'string' ? request.body.subject.replace(/[\r\n]+/g, ' ').trim() : '';
+  const message = typeof request.body?.message === 'string' ? request.body.message.replace(/\r\n/g, '\n').trim() : '';
+  if (subject.length < 3 || subject.length > 150) fail(400, 'Enter a subject of 3 to 150 characters.');
+  if (message.length < 3 || message.length > 5000) fail(400, 'Write a message of 3 to 5000 characters.');
+  const userIds: unknown[] = Array.isArray(request.body?.userIds) ? request.body.userIds : [];
+  const extra: unknown[] = Array.isArray(request.body?.extraEmails) ? request.body.extraEmails : [];
+  const byEmail = new Map<string, string>();
+  for (const id of userIds.slice(0, 1000)) {
+    const user = state.users.find((member) => member.id === id && member.role !== 'admin' && member.email);
+    if (user) byEmail.set(user.email.trim().toLowerCase(), user.id);
+  }
+  for (const raw of extra.slice(0, 100)) {
+    const parsed = z.string().trim().email().max(254).safeParse(raw);
+    if (parsed.success) byEmail.set(parsed.data.toLowerCase(), 'external');
+  }
+  const emails = [...byEmail.keys()];
+  if (!emails.length) fail(400, 'Choose at least one recipient.');
+  if (emails.length > 300) fail(400, 'Send to at most 300 recipients at a time.');
+  let sent = 0;
+  const failed: string[] = [];
+  for (let index = 0; index < emails.length; index += 5) {
+    await Promise.all(emails.slice(index, index + 5).map(async (email) => {
+      try { await sendAdminMessage(email, subject, message); sent += 1; } catch (error) { failed.push(email); console.error('Admin mail failed:', (error as Error).message); }
+    }));
+  }
+  auditAction('admin.mail.sent', admin.id, { subject, recipients: emails.length, sent, failed: failed.length });
+  response.json({ sent, failed, total: emails.length });
+}));
 app.get('/api/admin/users/:id/nin', (request: Request, response: Response) => {
   requireAdmin(request);
   const user = state.users.find((member) => member.id === request.params.id);
