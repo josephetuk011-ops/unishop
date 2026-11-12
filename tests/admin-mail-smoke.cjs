@@ -58,6 +58,14 @@ const server = app.listen(0, async () => {
     assert.ok(mail.html.includes('&lt;b&gt;team&lt;/b&gt;<br>Line two'), 'message is escaped and keeps line breaks');
     assert.ok(mail.html.includes('<p>Second paragraph</p>'));
     assert.equal(sent.filter((item) => item.to[0] === ids[0].email).length, 1, 'one email per person');
+    sent.length = 0;
+    const toSellers = await call('POST', '/api/admin/mail', { subject: 'Sellers only', message: 'Hello sellers', audience: 'seller' }, token);
+    assert.equal(toSellers.status, 200, JSON.stringify(toSellers.data));
+    assert.ok(sent.length >= 1 && sent.some((m) => m.to[0] === ids[1].email) && !sent.some((m) => m.to[0] === ids[0].email), 'only sellers');
+    sent.length = 0;
+    const toAll = await call('POST', '/api/admin/mail', { subject: 'Everyone', message: 'Hello all', audience: 'all' }, token);
+    assert.equal(toAll.status, 200);
+    assert.ok(sent.some((m) => m.to[0] === ids[0].email) && sent.some((m) => m.to[0] === ids[1].email), 'everyone');
     console.log('admin mail smoke test passed');
     server.close(); process.exit(0);
   } catch (error) { console.error(error); server.close(); process.exit(1); }

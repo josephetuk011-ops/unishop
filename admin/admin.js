@@ -386,6 +386,7 @@ async function loadMail() {
       <form id="mail-form" class="mail-form">
         <label for="mail-subject">Subject</label><input id="mail-subject" maxlength="150" required placeholder="What is this about?">
         <label for="mail-message">Message</label><textarea id="mail-message" rows="10" maxlength="5000" required placeholder="Type your message here"></textarea>
+        <label for="mail-audience">Send to</label><select id="mail-audience"><option value="selected">Only the people I tick on the right</option>${['all', 'customer', 'seller', 'provider', 'dispatch'].map((role) => { const n = mailRecipients.filter((person) => !person.suspended && (role === 'all' || person.role === role)).length; return `<option value="${role}">${role === 'all' ? 'Everyone' : 'All ' + mailRoleNames[role].toLowerCase()} (${n} active accounts)</option>`; }).join('')}</select>
         <label for="mail-extra">Other email addresses (optional, separated by commas)</label><input id="mail-extra" placeholder="name@example.com, other@example.com">
         <div class="dialog-actions"><span id="mail-count" class="record-count">0 selected</span><button id="mail-send" class="button button-primary" type="submit">Send mail</button></div>
         <p id="mail-result" class="form-error" role="status" hidden></p>
@@ -410,14 +411,18 @@ async function loadMail() {
   document.querySelector('#mail-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const extraEmails = document.querySelector('#mail-extra').value.split(/[\s,;]+/).filter(Boolean);
-    const count = mailSelected.size + extraEmails.length;
-    if (!count) { notify('Tick at least one recipient.'); return; }
-    if (!confirm(`Send this email to ${count} recipient${count === 1 ? '' : 's'}?`)) return;
+    const audience = document.querySelector('#mail-audience').value;
+    const group = audience === 'selected' ? '' : audience;
+    const groupCount = group ? mailRecipients.filter((person) => !person.suspended && (group === 'all' || person.role === group)).length : 0;
+    const count = groupCount + mailSelected.size + extraEmails.length;
+    if (!count) { notify('Choose who to send to: tick people or pick a group.'); return; }
+    const label = group ? document.querySelector('#mail-audience').selectedOptions[0].textContent.replace(/ \(.*/, '') : 'the people you ticked';
+    if (!confirm(`Send this email to ${label} (up to ${count} addresses)?`)) return;
     const button = document.querySelector('#mail-send');
     const result = document.querySelector('#mail-result');
     button.disabled = true; button.textContent = 'Sending…'; result.hidden = true;
     try {
-      const outcome = await api('/api/admin/mail', { method: 'POST', body: JSON.stringify({ subject: document.querySelector('#mail-subject').value, message: document.querySelector('#mail-message').value, userIds: [...mailSelected], extraEmails }) });
+      const outcome = await api('/api/admin/mail', { method: 'POST', body: JSON.stringify({ subject: document.querySelector('#mail-subject').value, message: document.querySelector('#mail-message').value, userIds: [...mailSelected], audience: group, extraEmails }) });
       result.hidden = false;
       result.textContent = outcome.failed.length ? `Sent to ${outcome.sent} of ${outcome.total}. Failed: ${outcome.failed.join(', ')}` : `Sent to ${outcome.sent} recipient${outcome.sent === 1 ? '' : 's'}.`;
       notify(outcome.failed.length ? 'Some emails failed.' : 'Mail sent.');
