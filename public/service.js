@@ -16,7 +16,7 @@ function showSlide(index, slides) {
   stage.querySelector('video')?.pause();
   const slide = slides[index];
   stage.innerHTML = slide.type === 'video'
-    ? `<video src="${esc(img(slide.src))}" controls playsinline autoplay muted aria-label="Video of ${esc(service.title)}"></video><div class="short-watermark wm-top" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""><span>UNISHOP</span></div>`
+    ? `<video src="${esc(img(slide.src))}" controls playsinline autoplay muted aria-label="Video of ${esc(service.title)}"></video><div class="short-watermark wm-top" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""></div>`
     : `<img src="${esc(img(slide.src, 1200))}" alt="${esc(service.title)}">`;
 }
 async function negotiate() {

@@ -571,3 +571,8 @@ body.shorts-open{overflow:hidden}
 
 .short-watermark.wm-top{top:10px;left:10px;bottom:auto;z-index:2}
 .detail-video-wrap{position:relative}.detail-video-wrap .detail-video{display:block;width:100%}
+
+/* Watermark: just the logo, light and translucent in the top-left corner, like TikTok. The logo file is dark on white, so it is inverted and screen-blended to show as a white mark on any video. */
+.short-watermark,.short-watermark.wm-top,.sv-watermark{--w:40px;position:absolute;top:8px;left:8px;bottom:auto;width:var(--w);height:calc(var(--w)*1.108);max-width:none;padding:0;gap:0;overflow:hidden;border-radius:0;background:none;mix-blend-mode:screen;opacity:.8;pointer-events:none;z-index:2}
+.sv-watermark{--w:56px;top:14px;left:14px}
+.short-watermark img,.sv-watermark img{display:block;width:calc(var(--w)*1.58);max-width:none;height:auto;margin-left:calc(var(--w)*-.326);margin-top:calc(var(--w)*-.847);border-radius:0;background:none;filter:invert(1) grayscale(1) contrast(1.3)}
