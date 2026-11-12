@@ -1060,13 +1060,20 @@ app.post('/api/admin/mail', adminMailLimiter, asyncRoute(async (request, respons
     const user = state.users.find((member) => member.id === id && member.role !== 'admin' && member.email);
     if (user) byEmail.set(user.email.trim().toLowerCase(), user.id);
   }
+  const audience = typeof request.body?.audience === 'string' ? request.body.audience : '';
+  if (['all', 'customer', 'seller', 'provider', 'dispatch'].includes(audience)) {
+    for (const user of state.users) {
+      if (user.role === 'admin' || !user.email || user.suspendedAt) continue;
+      if (audience === 'all' || user.role === audience) byEmail.set(user.email.trim().toLowerCase(), user.id);
+    }
+  }
   for (const raw of extra.slice(0, 100)) {
     const parsed = z.string().trim().email().max(254).safeParse(raw);
     if (parsed.success) byEmail.set(parsed.data.toLowerCase(), 'external');
   }
   const emails = [...byEmail.keys()];
   if (!emails.length) fail(400, 'Choose at least one recipient.');
-  if (emails.length > 300) fail(400, 'Send to at most 300 recipients at a time.');
+  if (emails.length > 500) fail(400, 'Send to at most 500 recipients at a time. Pick one account type at a time.');
   let sent = 0;
   const failed: string[] = [];
   for (let index = 0; index < emails.length; index += 5) {
