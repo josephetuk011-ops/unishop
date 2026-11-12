@@ -163,7 +163,7 @@ function renderProducts() {
     const matchesSearch = `${provider.provider || provider.name} ${provider.title || provider.trade} ${provider.niche || ''} ${provider.neighbourhood || ''}`.toLowerCase().includes(searchTerm);
     return matchesNiche && matchesSearch;
   });
-  const serviceMarkup = marketMode === 'goods' ? [] : services.map((provider, index) => {
+  const serviceMarkup = ['goods', 'brands'].includes(marketMode) ? [] : services.map((provider, index) => {
     const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
     return `<article class="product-card service-market-card" style="animation-delay:${(index + goodsMarkup.length) * 35}ms"><button class="service-market-image" data-view-service="${provider.id}" aria-label="View details of ${provider.title || provider.trade}"><img src="${imageUrl(image, 760)}" alt="${provider.title || provider.trade} by ${provider.provider || provider.name}" loading="lazy"><span class="service-image-tag">${provider.niche || provider.category || 'LOCAL SERVICE'}</span><span class="service-open-label">View service ↗</span></button><div class="product-details"><div class="product-vendor">${provider.provider || provider.name} · ${provider.neighbourhood || 'Uyo, Akwa Ibom'}</div><h3 class="product-name">${provider.title || provider.trade}</h3><div class="product-bottom"><span class="product-rating"><b>★</b> ${Number(provider.rating || 0).toFixed(1)} <span>(${provider.reviewCount || provider.reviews || 0})</span></span>${provider.online ? '<span class="online-dot">Online</span>' : ''}</div><div class="product-bottom"><button class="negotiate-button" data-book="${provider.id}">Proceed to negotiation</button></div></div></article>`;
   });
@@ -186,12 +186,34 @@ function renderProducts() {
   const serviceMarkupByItem = new Map(services.map((provider, index) => [provider, serviceMarkup[index]]));
   const realGoods = marketMode === 'services' ? [] : goods.filter(isVendorProduct);
   const demoGoods = marketMode === 'services' ? [] : goods.filter((product) => !isVendorProduct(product));
-  const realServices = marketMode === 'goods' ? [] : services.filter(isRealService).sort((left, right) => serviceAddedAt(right) - serviceAddedAt(left));
-  const demoServices = marketMode === 'goods' ? [] : services.filter((provider) => !isRealService(provider)).sort((left, right) => String(left.niche || left.category || left.trade || '').localeCompare(String(right.niche || right.category || right.trade || '')));
+  const realServices = ['goods', 'brands'].includes(marketMode) ? [] : services.filter(isRealService).sort((left, right) => serviceAddedAt(right) - serviceAddedAt(left));
+  const demoServices = ['goods', 'brands'].includes(marketMode) ? [] : services.filter((provider) => !isRealService(provider)).sort((left, right) => String(left.niche || left.category || left.trade || '').localeCompare(String(right.niche || right.category || right.trade || '')));
   const goodsMarkupByItem = new Map(goods.map((product, index) => [product, goodsMarkup[index]]));
   const newest = [...realGoods.map((item) => ({ item, at: addedAt(item), html: goodsMarkupByItem.get(item) })), ...realServices.map((item) => ({ item, at: serviceAddedAt(item), html: serviceMarkupByItem.get(item) }))].sort((left, right) => right.at - left.at);
-  const topLabel = marketMode === 'services' ? 'New from service providers' : marketMode === 'goods' ? 'New from vendors' : 'New from vendors and providers';
-  const groupedNew = newest.length ? [groupHeading(topLabel, newest.length, 'new'), ...newest.map((entry) => entry.html)] : [];
+  const topLabel = marketMode === 'services' ? 'Service providers' : marketMode === 'goods' ? 'New from vendors' : 'New from vendors and providers';
+  // Each section ranks its own listings on top: All alternates goods and services, Brands groups goods by shop.
+  let groupedNew;
+  if (marketMode === 'brands') {
+    const byBrand = new Map();
+    realGoods.slice().sort((left, right) => addedAt(right) - addedAt(left)).forEach((item) => {
+      const brand = item.brandProfile?.businessName || item.seller || 'Other';
+      if (!byBrand.has(brand)) byBrand.set(brand, []);
+      byBrand.get(brand).push(item);
+    });
+    groupedNew = [...byBrand.entries()].sort((left, right) => right[1].length - left[1].length)
+      .flatMap(([brand, items]) => [groupHeading(brand, items.length, 'brand'), ...items.map((item) => goodsMarkupByItem.get(item))]);
+  } else if (marketMode === 'all' && realGoods.length && realServices.length) {
+    const goodsFirst = newest.filter((entry) => realGoods.includes(entry.item));
+    const servicesFirst = newest.filter((entry) => realServices.includes(entry.item));
+    const mixed = [];
+    for (let i = 0; i < Math.max(goodsFirst.length, servicesFirst.length); i += 1) {
+      if (goodsFirst[i]) mixed.push(goodsFirst[i]);
+      if (servicesFirst[i]) mixed.push(servicesFirst[i]);
+    }
+    groupedNew = [groupHeading(topLabel, mixed.length, 'new'), ...mixed.map((entry) => entry.html)];
+  } else {
+    groupedNew = newest.length ? [groupHeading(topLabel, newest.length, 'new'), ...newest.map((entry) => entry.html)] : [];
+  }
   const groupedGoods = withHeadings(demoGoods, demoGoods.map((product) => goodsMarkupByItem.get(product)), (key) => categoryLabels[key] || key, (product) => product.category, 'goods');
   const groupedServices = withHeadings(demoServices, demoServices.map((provider) => serviceMarkupByItem.get(provider)), (key) => key, (provider) => provider.niche || provider.category || provider.trade, 'services');
   const listings = [...goodsMarkup, ...serviceMarkup];
@@ -629,7 +651,7 @@ document.querySelector('.category-pills').addEventListener('click', (event) => {
 document.querySelectorAll('[data-nav-mode]').forEach((link) => link.addEventListener('click', (event) => {
   event.preventDefault();
   const mode = link.dataset.navMode;
-  marketMode = mode === 'services' ? 'services' : mode === 'goods' ? 'goods' : 'all';
+  marketMode = ['services', 'goods', 'brands'].includes(mode) ? mode : 'all';
   selectedCategory = 'All';
   activeNiche = 'All';
   searchTerm = '';
