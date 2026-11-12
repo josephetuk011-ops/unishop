@@ -42,6 +42,24 @@ const server = app.listen(0, async () => {
     const sneakers = await send('POST', '/api/seller/products', { category: 'Shoes and sandals', description: 'Comfortable sneakers.', price: 9000, image: '/uploads/shirt.jpg', name: 'Sneakers', quantity: 4 }, st);
     assert.equal(sneakers.data.product.category, 'Shoes and sandals');
     const sneakerId = sneakers.data.product.id;
+    // Category-specific details
+    const specs = (await send('GET', '/api/product-specs')).data;
+    assert.equal(specs.categories['Phones and tablets'], 'phone');
+    assert.ok(specs.families.clothing.fields.some((f) => f.key === 'waist'));
+    const phoneBase = { category: 'Phones and tablets', description: 'A clean phone for you.', price: 150000, image: '/uploads/shirt.jpg', name: 'Galaxy A15', quantity: 2 };
+    assert.equal((await send('POST', '/api/seller/products', phoneBase, st)).status, 400, 'phone needs brand, model, storage');
+    assert.equal((await send('POST', '/api/seller/products', { ...phoneBase, specs: { brand: 'Nokia 3310', deviceType: 'Smartphone', model: 'X', condition: 'Brand new', storage: '64 GB' } }, st)).status, 400, 'brand must be from the list');
+    const phone = await send('POST', '/api/seller/products', { ...phoneBase, specs: { brand: 'Samsung', deviceType: 'Smartphone', model: 'Galaxy A15', condition: 'Brand new', storage: '128 GB', ram: '6 GB', battery: 5000, hacked: 'x' } }, st);
+    assert.equal(phone.status, 201, JSON.stringify(phone.data));
+    assert.deepEqual(phone.data.product.specs, { brand: 'Samsung', deviceType: 'Smartphone', model: 'Galaxy A15', condition: 'Brand new', storage: '128 GB', ram: '6 GB', battery: 5000 });
+    const phoneEdit = await send('PATCH', `/api/seller/products/${phone.data.product.id}`, { specs: { brand: 'Apple', deviceType: 'Smartphone', model: 'iPhone 13', condition: 'UK used', storage: '256 GB' } }, st);
+    assert.equal(phoneEdit.data.product.specs.brand, 'Apple');
+    const senator = await send('POST', '/api/seller/products', { category: "Men's clothing", description: 'Senator wear.', price: 25000, image: '/uploads/shirt.jpg', name: 'Senator set', quantity: 3, specs: { material: 'Cotton', madeToMeasure: 'Both', waist: 34, chest: 42 } }, st);
+    assert.equal(senator.status, 201, JSON.stringify(senator.data));
+    assert.equal(senator.data.product.specs.waist, 34);
+    assert.equal((await send('POST', '/api/seller/products', { category: "Men's clothing", description: 'Senator wear.', price: 25000, image: '/uploads/shirt.jpg', name: 'Bad set', quantity: 3, specs: { material: 'Cotton', madeToMeasure: 'Both', waist: -4 } }, st)).status, 400);
+    const moved = await send('PATCH', `/api/seller/products/${senator.data.product.id}`, { category: 'Furniture' }, st);
+    assert.equal(moved.data.product.specs, undefined, 'specs are dropped when the category has no spec form');
     const edited = await send('PATCH', `/api/seller/products/${sneakerId}`, { price: 9500, addQuantity: 6 }, st);
     assert.equal(edited.status, 200);
     assert.equal(edited.data.product.price, 9500);

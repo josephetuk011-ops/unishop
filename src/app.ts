@@ -1,4 +1,5 @@
 import express, { NextFunction, Request, Response } from 'express';
+import { cleanSpecs, specFamilies, categoryFamily } from './productSpecs';
 import path from 'path';
 import fs from 'fs';
 import crypto, { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'crypto';
@@ -1092,6 +1093,7 @@ app.post('/api/payouts/:reference/retry', asyncRoute(async (request, response) =
   response.json({ payout: payoutResponse(payout), availableBalanceNaira: availableBalanceFor(user.id) });
 }));
 app.get('/api/product-categories', (_request, response) => response.json({ groups: productCategoryGroups }));
+app.get('/api/product-specs', (_request, response) => response.json({ families: specFamilies, categories: categoryFamily }));
 app.get('/api/products', (_request, response) => response.json([
   ...catalog,
   ...state.sellerProducts.filter((product) => !isAccountSuspended(product.userId)).map((product) => {
@@ -1354,7 +1356,9 @@ app.post('/api/seller/products', (request: Request, response: Response) => {
   if (!Array.isArray(productImages) || productImages.length < 1 || productImages.length > 3 || productImages.some((item) => !isMediaRef(item, 'image'))) fail(400, 'Upload 1 to 3 product photos first.');
   if (video !== undefined && (!isMediaRef(video, 'video') || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
-  const product = { id: `seller-${randomBytes(10).toString('hex')}`, userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), ...stockFields, ...(preorderFields.preorder ? preorderFields : {}), image: productImages[0], images: productImages, video, videoDuration: video === undefined ? undefined : Number(videoDuration), rating: null, reviews: 0, createdAt: new Date().toISOString() };
+  const cleaned = cleanSpecs(category, request.body?.specs);
+  if (cleaned.error) fail(400, cleaned.error);
+  const product = { id: `seller-${randomBytes(10).toString('hex')}`, ...(cleaned.specs && Object.keys(cleaned.specs).length ? { specs: cleaned.specs } : {}), userId: user.id, name: name.trim(), seller: user.businessName, category, description: description.trim(), price: Number(price), ...stockFields, ...(preorderFields.preorder ? preorderFields : {}), image: productImages[0], images: productImages, video, videoDuration: video === undefined ? undefined : Number(videoDuration), rating: null, reviews: 0, createdAt: new Date().toISOString() };
   state.sellerProducts.push(product);
   saveState();
   response.status(201).json({ product });
@@ -1370,6 +1374,11 @@ app.patch('/api/seller/products/:id', (request: Request, response: Response) => 
   if (category !== undefined && (typeof category !== 'string' || !validProductCategories.has(category))) fail(400, 'Choose a valid product category.');
   if (description !== undefined && (typeof description !== 'string' || description.trim().length < 5 || description.length > 1000)) fail(400, 'Add a short product description.');
   if (price !== undefined && (!Number.isInteger(Number(price)) || Number(price) < 100 || Number(price) > 100000000)) fail(400, 'Enter a valid price in Naira.');
+  let cleanedSpecs: ReturnType<typeof cleanSpecs> | undefined;
+  if (request.body?.specs !== undefined || (category !== undefined && category !== product.category)) {
+    cleanedSpecs = cleanSpecs(category ?? product.category, request.body?.specs ?? (category !== undefined && category !== product.category ? {} : product.specs));
+    if (cleanedSpecs.error) fail(400, cleanedSpecs.error);
+  }
   const stockFields = parseStock(request.body);
   const preorderFields = parsePreorder(request.body, product);
   const hasSizes = Array.isArray(product.sizes) && product.sizes.length > 0;
@@ -1384,6 +1393,7 @@ app.patch('/api/seller/products/:id', (request: Request, response: Response) => 
   if (category !== undefined) product.category = category;
   if (description !== undefined) product.description = description.trim();
   if (price !== undefined) product.price = Number(price);
+  if (cleanedSpecs) { if (cleanedSpecs.specs && Object.keys(cleanedSpecs.specs).length) product.specs = cleanedSpecs.specs; else delete product.specs; }
   if (preorderFields.preorder === true) {
     product.preorder = true;
     product.preorderDays = preorderFields.preorderDays;

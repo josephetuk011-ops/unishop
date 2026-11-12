@@ -173,7 +173,7 @@ function serviceForm() {
   return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><label class="form-field">Starting price (NGN)<input name="price" type="number" required min="500" step="100" placeholder="12000"></label><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 6 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · Any video · under 2 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerForm() {
-  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option value="" disabled selected>Choose a category</option>${categoryOptions()}</select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label>${availabilityFields()}<label class="form-field stock-field">Quantity available<input name="quantity" type="number" min="0" max="100000" step="1" required value="1"></label><label class="form-field stock-field">Sizes <span class="form-help">Optional. Number available per size, like S:5, M:3, L:2. When filled, the quantity above is ignored.</span><input name="sizes" maxlength="200" placeholder="S:5, M:3, L:2"></label><label class="form-field">Product photos <span class="form-help">1 to 3 photos. The first is the cover.</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label><div class="upload-preview full" id="product-preview"></div><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · Any video · under 2 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
+  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option value="" disabled selected>Choose a category</option>${categoryOptions()}</select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><div class="full" data-spec-fields></div>${availabilityFields()}<label class="form-field stock-field">Quantity available<input name="quantity" type="number" min="0" max="100000" step="1" required value="1"></label><label class="form-field stock-field">Sizes <span class="form-help">Optional. Number available per size, like S:5, M:3, L:2. When filled, the quantity above is ignored.</span><input name="sizes" maxlength="200" placeholder="S:5, M:3, L:2"></label><label class="form-field">Product photos <span class="form-help">1 to 3 photos. The first is the cover.</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label><div class="upload-preview full" id="product-preview"></div><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · Any video · under 2 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerDashboard() {
   const { products, orders, metrics, user } = dashboardData;
@@ -185,6 +185,26 @@ function sellerDashboard() {
   return `${header(`Welcome, ${user.name.split(' ')[0]}`, user.businessName || 'Vendors and Brands workspace', '<button class="primary-button" data-open-form="product">+ Add product</button>')}<div class="metric-grid">${metric('Active products', metrics.productCount)}${metric('Paid orders', metrics.orderCount)}${metric('Verified gross sales', formatMoney(metrics.grossSales), 'Before commission and dispatch contribution')}</div><div class="dashboard-grid">${panel('Recent orders', table(['Order', 'Products', 'Total', 'Payment'], orderRows(orders.slice(-5)), 'No paid orders yet.'))}${panel('Latest products', `<div class="compact-list">${products.slice(-4).reverse().map((product) => `<div class="compact-row"><img src="${escapeHtml(product.image)}" alt=""><span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.category)}</small></span><b>${formatMoney(product.price)}</b></div>`).join('') || '<div class="empty-state">Your products will appear here.</div>'}</div>`)}</div>${moneyNote()}${payoutPanel()}${productForm()}`;
 }
 let productCategoryGroups = [];
+let productSpecs = { families: {}, categories: {} };
+function specFieldsHtml(category, values = {}) {
+  const family = productSpecs.families[productSpecs.categories[category]];
+  if (!family) return '';
+  const fields = family.fields.map((field) => {
+    const value = values[field.key] ?? '';
+    const label = `${escapeHtml(field.label)}${field.unit ? ` (${escapeHtml(field.unit)})` : ''}${field.required ? ' *' : ''}`;
+    const help = field.help ? `<span class="form-help">${escapeHtml(field.help)}</span>` : '';
+    const required = field.required ? ' required' : '';
+    if (field.type === 'select') return `<label class="form-field">${label}${help}<select name="spec_${field.key}"${required}><option value="">Choose</option>${field.options.map((option) => `<option value="${escapeHtml(option)}"${option === value ? ' selected' : ''}>${escapeHtml(option)}</option>`).join('')}</select></label>`;
+    if (field.type === 'number') return `<label class="form-field">${label}${help}<input name="spec_${field.key}" type="number" step="any" min="${field.min ?? 0}" max="${field.max ?? 1000000}" value="${escapeHtml(String(value))}"${required}></label>`;
+    return `<label class="form-field">${label}${help}<input name="spec_${field.key}" maxlength="80" value="${escapeHtml(String(value))}"${required}></label>`;
+  }).join('');
+  return `<fieldset class="form-field full spec-box"><legend>${escapeHtml(family.title)}</legend><div class="spec-grid">${fields}</div></fieldset>`;
+}
+function collectSpecs(form) {
+  const specs = {};
+  form.querySelectorAll('[name^="spec_"]').forEach((input) => { if (input.value.trim() !== '') specs[input.name.slice(5)] = input.value.trim(); });
+  return specs;
+}
 function categoryOptions() {
   return productCategoryGroups.map((entry) => `<optgroup label="${escapeHtml(entry.group)}">${entry.items.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}</optgroup>`).join('');
 }
@@ -201,6 +221,10 @@ function syncAvailability(form) {
   if (quantity && form.id === 'product-form') quantity.required = !preorder;
 }
 document.addEventListener('change', (event) => {
+  if (event.target.matches('select[name="category"]') && event.target.form?.querySelector('[data-spec-fields]')) {
+    const box = event.target.form.querySelector('[data-spec-fields]');
+    box.innerHTML = specFieldsHtml(event.target.value);
+  }
   if (event.target.matches('input[name="availability"]')) syncAvailability(event.target.closest('form'));
 });
 function stockText(product) {
@@ -321,6 +345,7 @@ function renderDashboard() {
 async function refreshDashboard() {
   try {
     if (!productCategoryGroups.length) productCategoryGroups = (await api('/api/product-categories').catch(() => ({ groups: [] }))).groups;
+    if (!Object.keys(productSpecs.families).length) productSpecs = await api('/api/product-specs').catch(() => ({ families: {}, categories: {} }));
     dashboardData = await api('/api/dashboard');
     if (dashboardData.role === 'admin') return endSession();
     if (['seller', 'provider', 'dispatch'].includes(dashboardData.role) && !businessProfileComplete(dashboardData.user)) selectedView = 'profile';
@@ -399,7 +424,7 @@ function productEditForm(product) {
   const stock = sized
     ? `<label class="form-field full stock-field">Quantity per size <span class="form-help">Change the numbers after a restock, like S:5, M:3, L:2.</span><input name="sizes" value="${escapeHtml(product.sizes.map((row) => `${row.label}:${row.quantity}`).join(', '))}" maxlength="200" required></label>`
     : `<label class="form-field stock-field">Add to stock <span class="form-help">Now: ${product.stock === undefined || product.stock === null ? 'not tracked' : product.stock}. Enter how many you are adding.</span><input name="addQuantity" type="number" min="0" max="100000" step="1" value="0"></label><label class="form-field stock-field">Or set total in stock<input name="quantity" type="number" min="0" max="100000" step="1" placeholder="Keep"></label>`;
-  return `<form class="form-grid edit-form" data-product-edit-form="${escapeHtml(product.id)}"><label class="form-field full">Product name<input name="name" required minlength="3" maxlength="100" value="${escapeHtml(product.name)}"></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="1" value="${Number(product.price)}"></label><label class="form-field">Category<select name="category" required>${legacy}${categories}</select></label>${availabilityFields(product)}${stock}<label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000">${escapeHtml(product.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
+  return `<form class="form-grid edit-form" data-product-edit-form="${escapeHtml(product.id)}"><label class="form-field full">Product name<input name="name" required minlength="3" maxlength="100" value="${escapeHtml(product.name)}"></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="1" value="${Number(product.price)}"></label><label class="form-field">Category<select name="category" required>${legacy}${categories}</select></label><div class="full" data-spec-fields>${specFieldsHtml(product.category, product.specs || {})}</div>${availabilityFields(product)}${stock}<label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000">${escapeHtml(product.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
 }
 function serviceEditForm(listing) {
   return `<form class="form-grid edit-form" data-service-edit-form="${escapeHtml(listing.id)}"><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" value="${escapeHtml(listing.title)}"></label><label class="form-field">Starting price (NGN)<input name="price" type="number" required min="500" step="1" value="${Number(listing.price)}"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500">${escapeHtml(listing.description || '')}</textarea></label><div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
@@ -431,7 +456,7 @@ document.addEventListener('submit', async (event) => {
   try {
     if (productForm) {
       const f = form.elements;
-      const body = { name: f.name.value, price: Number(f.price.value), category: f.category.value, description: f.description.value };
+      const body = { name: f.name.value, price: Number(f.price.value), category: f.category.value, description: f.description.value, specs: collectSpecs(form) };
       if (f.availability.value === 'preorder') { body.preorder = true; body.preorderDays = Number(f.preorderDays.value); }
       else if (productForm.dataset.wasPreorder === '1') body.preorder = false;
       if (body.preorder) { /* no stock for pre-orders */ }
@@ -649,7 +674,7 @@ document.addEventListener('submit', async (event) => {
       if (photos.length < 1 || photos.length > 3) throw new Error('Choose 1 to 3 product photos.');
       const uploaded = await uploadFiles(photos);
       const uploadedVideo = await uploadShortVideo(form.elements.video.files[0]);
-      await api('/api/seller/products', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value, category: form.elements.category.value, description: form.elements.description.value, price: form.elements.price.value, ...(form.elements.availability.value === 'preorder' ? { preorder: true, preorderDays: Number(form.elements.preorderDays.value) } : { quantity: form.elements.quantity.value, sizes: parseSizes(form.elements.sizes.value) }), images: uploaded.images, video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
+      await api('/api/seller/products', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value, category: form.elements.category.value, description: form.elements.description.value, price: form.elements.price.value, specs: collectSpecs(form), ...(form.elements.availability.value === 'preorder' ? { preorder: true, preorderDays: Number(form.elements.preorderDays.value) } : { quantity: form.elements.quantity.value, sizes: parseSizes(form.elements.sizes.value) }), images: uploaded.images, video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });
       selectedView = 'listings';
       await refreshDashboard();
       notify('Product published to your catalogue.');
