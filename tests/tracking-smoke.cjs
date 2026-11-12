@@ -38,7 +38,7 @@ const server = app.listen(0, async () => {
     const st = seller.data.token;
     await send('PATCH', '/api/profile', { name: 'Track Seller', businessName: 'Track Shop', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'A local shop selling things around Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/ceo.jpg' }, st);
     const product = (await send('POST', '/api/seller/products', { category: 'Fashion', description: 'A nice shirt for you.', price: 5000, image: '/uploads/shirt.jpg', name: 'Track shirt', quantity: 5 }, st)).data.product;
-    assert.equal((await send('POST', '/api/auth/register', { name: 'Rider', username: `rid${stamp}`, email: `rid${stamp}@example.com`, password: 'marketplacepassword123', role: 'dispatch', businessName: 'Ewet' })).status, 403);
+    assert.equal((await send('POST', '/api/auth/register', { name: 'Rider', username: `rid${stamp}`, email: `rid${stamp}@example.com`, password: 'marketplacepassword123', role: 'dispatch', businessName: 'Ewet' })).status, 201);
     const buyer = await send('POST', '/api/auth/register', { name: 'Track Buyer', username: `trb${stamp}`, email: `trb${stamp}@example.com`, password: 'marketplacepassword123', role: 'customer' });
     const bt = buyer.data.token;
     const order = await send('POST', '/api/payments/initialize', { email: `trb${stamp}@example.com`, customer: { name: 'Track Buyer', phone: '08000000000' }, delivery: { address: '12 Test Street', neighbourhood: 'Ewet Housing' }, items: [{ id: product.id, quantity: 1 }] }, bt);

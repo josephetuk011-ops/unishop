@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101723">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" type="image/png" href="/assets/favicon-192.png" sizes="192x192">
+  <title>Unishop delivery team</title>
+  <link rel="stylesheet" href="/delivery.css">
+</head>
+<body>
+  <header class="dl-top"><a class="dl-brand" href="/">Unishop <span>Delivery</span></a><button class="dl-link" id="dl-signout" hidden>Sign out</button></header>
+  <main class="dl-main">
+    <section id="dl-auth" class="dl-card dl-auth" hidden>
+      <h1>Delivery team</h1>
+      <p class="dl-muted">Create an account or sign in to see every order and service booking, and to get an email the moment a new one comes in.</p>
+      <div class="dl-tabs"><button type="button" id="tab-login" class="active">Sign in</button><button type="button" id="tab-register">Create account</button></div>
+      <form id="dl-login">
+        <label>Username<input name="username" required autocomplete="username"></label>
+        <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+        <button class="dl-btn" type="submit">Sign in</button>
+      </form>
+      <form id="dl-register" hidden>
+        <label>Full name<input name="name" required minlength="2" autocomplete="name"></label>
+        <label>Username<input name="username" required minlength="3" maxlength="30" pattern="[A-Za-z0-9._-]+" autocomplete="username"></label>
+        <label>Email (new orders and bookings are sent here)<input name="email" type="email" required autocomplete="email"></label>
+        <label>Delivery area or team name<input name="businessName" required minlength="2" placeholder="e.g. Uyo central riders"></label>
+        <label>Password (at least 10 characters)<input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
+        <button class="dl-btn" type="submit">Create delivery account</button>
+      </form>
+      <p class="dl-error" id="dl-error" role="alert"></p>
+    </section>
+    <section id="dl-app" hidden>
+      <div class="dl-metrics" id="dl-metrics"></div>
+      <section class="dl-card"><h2>Orders to deliver</h2><div id="dl-open"></div></section>
+      <section class="dl-card"><h2>My deliveries</h2><div id="dl-mine"></div></section>
+      <section class="dl-card"><h2>Service bookings</h2><p class="dl-muted">Paid bookings with the provider and the area. Customer contact details stay private.</p><div id="dl-bookings"></div></section>
+    </section>
+  </main>
+  <div class="dl-toast" id="dl-toast" role="status"></div>
+  <script src="/delivery.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#101723;font-family:'DM Sans',system-ui,sans-serif}
+.dl-top{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#101723;color:#fff}
+.dl-brand{color:#fff;text-decoration:none;font-weight:800;font-size:1.1rem}.dl-brand span{color:#8fb0ff;font-weight:600}
+.dl-link{background:none;border:1px solid #556;color:#fff;border-radius:8px;padding:6px 12px;cursor:pointer;font:inherit}
+.dl-main{max-width:960px;margin:0 auto;padding:18px}
+.dl-card{background:#fff;border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.dl-card h1,.dl-card h2{margin:0 0 6px}.dl-muted{color:#566;margin:0 0 12px;font-size:.92rem}
+.dl-auth{max-width:420px;margin:24px auto}
+.dl-tabs{display:flex;gap:6px;margin:10px 0 14px}.dl-tabs button{flex:1;padding:9px;border:1px solid #cfd6e4;background:#fff;border-radius:10px;cursor:pointer;font:inherit}.dl-tabs .active{background:#1d3fbb;color:#fff;border-color:#1d3fbb}
+form label{display:block;font-size:.85rem;margin-bottom:10px;color:#334}form input{display:block;width:100%;margin-top:4px;padding:10px;border:1px solid #cfd6e4;border-radius:10px;font:inherit}
+.dl-btn{width:100%;padding:12px;border:0;border-radius:10px;background:#1d3fbb;color:#fff;font:inherit;font-weight:700;cursor:pointer}.dl-btn:disabled{opacity:.6}
+.dl-small{padding:7px 12px;width:auto;font-size:.85rem}
+.dl-error{color:#b3261e;min-height:1.2em;margin:10px 0 0;font-size:.9rem}
+.dl-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}.dl-metrics div{background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.08)}.dl-metrics strong{display:block;font-size:1.6rem}.dl-metrics span{color:#566;font-size:.85rem}
+.dl-item{border-top:1px solid #e6eaf2;padding:12px 0}.dl-item:first-child{border-top:0}.dl-item h3{margin:0 0 4px;font-size:1rem}.dl-item p{margin:2px 0;font-size:.9rem;color:#334}
+.dl-pill{display:inline-block;padding:2px 8px;border-radius:99px;background:#e8eefc;color:#1d3fbb;font-size:.78rem;margin-left:6px}
+.dl-empty{color:#667;padding:8px 0}
+.dl-toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#101723;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90%}.dl-toast.show{opacity:1}
