@@ -548,6 +548,7 @@ function setPaymentStatus(state, reference, details = '', canTrack = false) {
   const labels = {
     checking: ['PAYMENT UPDATE', 'Checking your payment', 'We are confirming the transaction securely with Paystack.', '…'],
     paid: ['PAYMENT CONFIRMED', 'Payment successfully made', 'Your payment was verified and your order is in. Unishop will prepare it for delivery in Uyo. Track it at any time from your workspace.', '✓'],
+    part: ['FIRST PART RECEIVED', 'Part payment successful', details, '✓'],
     pending: ['PAYMENT NOT CONFIRMED', 'Your order is still unpaid', details || 'No successful payment was confirmed. Your bag is still saved so you can try again.', '!'],
     error: ['PAYMENT CHECK FAILED', 'We could not verify that yet', details || 'Your order has not been marked as paid. Please retry the payment or contact support with this reference.', '!']
   }[state];
@@ -575,12 +576,17 @@ document.querySelector('#checkout-form').addEventListener('submit', async (event
   const form = event.currentTarget;
   const submit = form.querySelector('button[type="submit"]');
   const original = submit.innerHTML;
+  const checkoutLines = Object.entries(cart).filter(([, quantity]) => quantity > 0);
+  const checkoutItems = checkoutLines.reduce((total, [key, quantity]) => total + (products.find((product) => product.id === cartParts(key).id)?.price || 0) * quantity, 0);
+  const plan = await window.UnishopPayPlan.choose(checkoutItems + 500 - rewardFor(checkoutItems));
+  if (!plan) return;
   submit.disabled = true;
   submit.textContent = 'Connecting securely…';
   try {
     const result = await apiRequest('/api/payments/initialize', {
       method: 'POST',
       body: JSON.stringify({
+        paymentPlan: plan,
         email: form.elements.email.value,
         customer: { name: form.elements.name.value, phone: form.elements.phone.value },
         delivery: { address: form.elements.address.value, neighbourhood: form.elements.neighbourhood.value },
@@ -607,7 +613,12 @@ async function verifyPaymentReturn() {
   setPaymentStatus('checking', reference);
   try {
     const result = await apiRequest(`/api/payments/verify/${encodeURIComponent(reference)}`);
-    if (result.order.paymentStatus === 'paid') {
+    if (result.order.paymentStatus === 'part-paid') {
+      cart = {};
+      localStorage.setItem('marketday-cart', JSON.stringify(cart));
+      renderCart();
+      setPaymentStatus('part', reference, `We received the first part. Pay the remaining ₦${Number(result.order.balanceNaira).toLocaleString('en-NG')} from Your orders in your workspace to confirm it.`);
+    } else if (result.order.paymentStatus === 'paid') {
       cart = {};
       localStorage.setItem('marketday-cart', JSON.stringify(cart));
       renderCart();
@@ -795,7 +806,9 @@ document.querySelector('#booking-form').addEventListener('submit', async (event)
   const provider = providers.find((person) => person.id === form.dataset.provider);
   try {
     const result = await apiRequest('/api/bookings', { method: 'POST', body: JSON.stringify({ providerId: provider.id, neighbourhood: form.elements.neighbourhood.value, time: form.elements.time.value, note: form.elements.note.value }) });
-    const payment = await apiRequest('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: result.booking.id }) });
+    const plan = await window.UnishopPayPlan.choose(result.booking.amountNaira + 500);
+    if (!plan) { notify('Your booking is saved. Pay from your dashboard when you are ready.'); return; }
+    const payment = await apiRequest('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: result.booking.id, paymentPlan: plan }) });
     window.location.assign(payment.authorizationUrl);
     return;
   } catch (error) {
