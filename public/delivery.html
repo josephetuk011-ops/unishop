@@ -20,6 +20,7 @@
         <label>Username<input name="username" required autocomplete="username"></label>
         <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
         <button class="dl-btn" type="submit">Sign in</button>
+        <p style="text-align:center;margin:10px 0 0"><a href="#" data-forgot>Forgot password?</a></p>
       </form>
       <form id="dl-register" hidden>
         <label>Full name<input name="name" required minlength="2" autocomplete="name"></label>
@@ -39,6 +40,7 @@
     </section>
   </main>
   <div class="dl-toast" id="dl-toast" role="status"></div>
+  <script src="/forgot.js"></script>
   <script src="/delivery.js"></script>
 </body>
 </html>
