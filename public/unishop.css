@@ -506,3 +506,5 @@ body.dark-theme .product-card .product-price{background:#1d2a45;border-color:#f2
 .product-card .product-bottom{margin-top:auto}
 .preorder-note{background:#fff1e6;color:#b34a14;border:1px solid #f1b78f;border-radius:999px;padding:3px 10px;font-weight:700}
 .marketplace-niches { margin: 28px 0 12px; }
+
+.auth-forgot{display:block;margin:10px auto 0;background:none;border:0;color:#1d3fbb;font:inherit;font-size:.9rem;cursor:pointer;text-decoration:underline}.auth-forgot[hidden]{display:none}

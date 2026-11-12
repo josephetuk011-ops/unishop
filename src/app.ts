@@ -45,7 +45,7 @@ const validProductCategories = new Set([...productCategoryGroups.flatMap((entry)
 const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED !== 'false';
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; resetTokenHash?: string; resetExpiresAt?: number; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[]; conversations: any[]; chatMessages: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -860,7 +860,7 @@ const uploadRateLimiter = rateLimit({
   handler: (_request, response) => response.status(429).json({ error: 'Too many uploads. Try again later.' })
 });
 app.use('/api', apiRateLimiter);
-app.use(['/api/auth/register', '/api/auth/send-otp', '/api/auth/verify-otp'], signupRateLimiter);
+app.use(['/api/auth/register', '/api/auth/send-otp', '/api/auth/verify-otp', '/api/auth/forgot-password', '/api/auth/reset-password'], signupRateLimiter);
 app.use('/api/uploads', uploadRateLimiter);
 app.use('/api/auth/login', authRateLimiter);
 app.use('/api/admin/login', adminRateLimiter);
@@ -1673,6 +1673,42 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
   const refreshToken = refreshTokenFor(user);
   setAuthCookies(response, accessToken, refreshToken);
   response.status(201).json({ token: accessToken, refreshToken, user: cleanUser(user), emailVerificationRequired: !user.emailVerified });
+}));
+
+// Forgot password: the answer never reveals whether an account exists. A matching account is emailed a
+// one-hour link; only a hash of the token is stored, and it can be used once.
+app.post('/api/auth/forgot-password', asyncRoute(async (request: Request, response: Response) => {
+  const target = sanitizeText(typeof request.body?.identifier === 'string' ? request.body.identifier : '', '').toLowerCase();
+  const generic = { message: 'If an account matches, we sent a password reset link to its email address. It works for one hour.' };
+  if (target.length < 3 || target.length > 254) fail(400, 'Enter your username or email address.');
+  const matches = state.users.filter((item) => item.role !== 'admin' && !item.suspendedAt && (item.email.toLowerCase() === target || (item.username || legacyUsername(item)).toLowerCase() === target));
+  const base = (process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://unishopit.com')).replace(/\/$/, '');
+  for (const account of matches) {
+    const token = randomBytes(32).toString('hex');
+    account.resetTokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    account.resetExpiresAt = Date.now() + 60 * 60 * 1000;
+    saveState();
+    auditAction('password.reset.requested', account.id, {});
+    const link = `${base}/?reset=${token}`;
+    sendEmail(account.email, { title: 'Reset your Unishop password', body: `Hello ${account.name.split(' ')[0]}, use this link to choose a new password for ${account.username || legacyUsername(account)}. It works for one hour. If you did not ask for it, ignore this email.`, url: link }).catch((error) => console.error('Reset email failed:', error.message));
+  }
+  response.json(generic);
+}));
+
+app.post('/api/auth/reset-password', asyncRoute(async (request: Request, response: Response) => {
+  const { token, password } = request.body || {};
+  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) fail(400, 'This reset link is not valid. Ask for a new one.');
+  if (typeof password !== 'string' || password.length < 10 || password.length > 128) fail(400, 'Choose a password of at least 10 characters.');
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  const account = state.users.find((item) => item.resetTokenHash === hash);
+  if (!account || !account.resetExpiresAt || account.resetExpiresAt < Date.now()) fail(400, 'This reset link has expired or was already used. Ask for a new one.');
+  account.passwordHash = await bcrypt.hash(password, 12);
+  delete account.resetTokenHash;
+  delete account.resetExpiresAt;
+  clearLoginFailure(account.username || legacyUsername(account));
+  saveState();
+  auditAction('password.reset.completed', account.id, {});
+  response.json({ message: 'Your password was changed. Sign in with the new password.', username: account.username || legacyUsername(account) });
 }));
 
 app.post('/api/auth/send-otp', asyncRoute(async (request: Request, response: Response) => {

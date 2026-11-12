@@ -465,6 +465,7 @@ function updateAuthForm() {
   authForm.elements.password.placeholder = registering ? 'At least 10 characters' : 'Your password';
   authSwitch.innerHTML = registering ? 'Already have an account? <button type="button">Sign in</button>' : 'New to Unishop? <button type="button">Create an account</button>';
   showAuthError('');
+  document.querySelector('.auth-forgot').hidden = registering;
   document.querySelector('.auth-submit').innerHTML = registering ? `Create ${authRoleNames[selectedAuthRole]} account <span>→</span>` : 'Sign in <span>→</span>';
   document.querySelector('.auth-intro').textContent = registering ? `${authRoleNames[selectedAuthRole]} account · Uyo, Akwa Ibom` : 'Sign in with your username and password.';
 }
