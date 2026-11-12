@@ -174,7 +174,7 @@ function providerDashboard() {
 }
 function serviceForm() {
   const options = roleNiches.map((niche) => `<option value="${escapeHtml(niche)}" ${dashboardData.user.niche === niche ? 'selected' : ''}>${escapeHtml(niche)}</option>`).join('');
-  return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><p class="form-help full">You do not set a price. Customers tap Proceed to negotiation and agree the price with you in chat.</p><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 10 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · Any video · up to 6 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
+  return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><p class="form-help full">You do not set a price. Customers tap Proceed to negotiation and agree the price with you in chat.</p><div class="tpl-slot full" data-tpl-slot></div><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 10 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · Any video · up to 6 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerForm() {
   return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option value="" disabled selected>Choose a category</option>${categoryOptions()}</select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><div class="full" data-spec-fields></div>${availabilityFields()}<label class="form-field stock-field">Quantity available<input name="quantity" type="number" min="0" max="100000" step="1" required value="1"></label><label class="form-field stock-field">Sizes <span class="form-help">Optional. Number available per size, like S:5, M:3, L:2. When filled, the quantity above is ignored.</span><input name="sizes" maxlength="200" placeholder="S:5, M:3, L:2"></label><label class="form-field">Product photos <span class="form-help">1 to 10 photos, 5 MB each. The first is the cover.</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label><div class="upload-preview full" id="product-preview"></div><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · Any video · up to 6 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
@@ -495,7 +495,7 @@ function productEditForm(product) {
   return `<form class="form-grid edit-form" data-product-edit-form="${escapeHtml(product.id)}"><label class="form-field full">Product name<input name="name" required minlength="3" maxlength="100" value="${escapeHtml(product.name)}"></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="1" value="${Number(product.price)}"></label><label class="form-field">Category<select name="category" required>${legacy}${categories}</select></label><div class="full" data-spec-fields>${specFieldsHtml(product.category, product.specs || {})}</div>${availabilityFields(product)}${stock}<label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000">${escapeHtml(product.description || '')}</textarea></label>${photoManager(product.images && product.images.length ? product.images : [product.image].filter(Boolean))}<div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
 }
 function serviceEditForm(listing) {
-  return `<form class="form-grid edit-form" data-service-edit-form="${escapeHtml(listing.id)}"><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" value="${escapeHtml(listing.title)}"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500">${escapeHtml(listing.description || '')}</textarea></label>${photoManager(listing.portfolio || [])}<div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
+  return `<form class="form-grid edit-form" data-service-edit-form="${escapeHtml(listing.id)}" data-niche="${escapeHtml(listing.niche || '')}"><div class="tpl-slot full" data-tpl-slot></div><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" value="${escapeHtml(listing.title)}"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500">${escapeHtml(listing.description || '')}</textarea></label>${photoManager(listing.portfolio || [])}<div class="form-actions"><button class="primary-button" type="submit">Save changes</button><button class="secondary-button" type="button" data-cancel-edit>Cancel</button></div></form>`;
 }
 document.addEventListener('click', (event) => {
   const editProduct = event.target.closest('[data-edit-product]');
@@ -538,6 +538,7 @@ document.addEventListener('submit', async (event) => {
       notify('Product updated. Customers see the new price and stock now.');
     } else {
       const f = form.elements;
+      if (!confirmPlaceholders(f.description.value)) { button.disabled = false; return; }
       await api(`/api/provider/listings/${encodeURIComponent(serviceForm.dataset.serviceEditForm)}`, { method: 'PATCH', body: JSON.stringify({ title: f.title.value, description: f.description.value, portfolio: JSON.parse(form.querySelector('[data-photo-manager]').dataset.photos || '[]') }) });
       notify('Service updated.');
     }
@@ -735,6 +736,7 @@ document.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.target;
     const button = form.querySelector('[type="submit"]');
+    if (!confirmPlaceholders(form.elements.description.value)) return;
     button.disabled = true;
     try {
       const upload = await uploadFiles(form.elements.images.files);
@@ -772,3 +774,48 @@ else refreshDashboard().catch(() => {
   window.location.replace('/');
 });
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+
+
+// ---- Suggested listing text for service providers (public/service-templates.js) ----
+function confirmPlaceholders(text) {
+  const tools = window.UnishopServiceTemplates;
+  if (!tools || !tools.hasPlaceholders(text)) return true;
+  return confirm('Your description still has [brackets] to fill in, such as prices or hours. Publish anyway?');
+}
+function templateNicheFor(form) {
+  return form.elements?.niche ? form.elements.niche.value : (form.dataset.niche || '');
+}
+function renderTemplateBar(form) {
+  const slot = form.querySelector('[data-tpl-slot]');
+  const tools = window.UnishopServiceTemplates;
+  if (!slot || !tools) return;
+  slot.dataset.ready = '1';
+  const template = tools.get(templateNicheFor(form));
+  if (!template) { slot.innerHTML = ''; return; }
+  slot.innerHTML = `<div class="tpl-bar"><div class="tpl-head"><div><strong>Suggested for ${escapeHtml(template.label)}</strong><span>A ready-made description with your prices, hours and rules. Fill in the [brackets] and delete what does not apply.</span></div><button class="secondary-button" type="button" data-use-template>Use this template</button></div><details><summary>See what it looks like</summary><pre>${escapeHtml(template.text)}</pre></details></div>`;
+}
+function setupTemplateBars(root = document) {
+  root.querySelectorAll('#service-form, [data-service-edit-form]').forEach((form) => { if (!form.querySelector('[data-tpl-slot]')?.dataset.ready) renderTemplateBar(form); });
+}
+document.addEventListener('change', (event) => {
+  const select = event.target.closest('#service-form select[name="niche"]');
+  if (select) renderTemplateBar(select.closest('form'));
+});
+document.addEventListener('click', (event) => {
+  const button = event.target.closest('[data-use-template]');
+  if (button) {
+    const form = button.closest('form');
+    const template = window.UnishopServiceTemplates?.get(templateNicheFor(form));
+    if (!template) return;
+    const box = form.elements.description;
+    if (box.value.trim() && !confirm('Replace what you have already written with the template?')) return;
+    box.value = template.text;
+    if (!form.elements.title.value.trim()) form.elements.title.value = template.title.replace(/\[|\]/g, '');
+    box.focus();
+    const start = box.value.indexOf('[');
+    const end = box.value.indexOf(']', start);
+    if (start >= 0 && end > start) box.setSelectionRange(start, end + 1);
+    return;
+  }
+});
+new MutationObserver(() => setupTemplateBars()).observe(document.body, { childList: true, subtree: true });
