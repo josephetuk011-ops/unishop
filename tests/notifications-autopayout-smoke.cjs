@@ -47,7 +47,7 @@ const server = app.listen(0, async () => {
     const provider = await send('POST', '/api/auth/register', { name: 'Pro Vider', username: 'notifprovider', email: 'provider@example.com', password, role: 'provider', businessName: 'Notif Barbing', niche: 'Barbing' });
     await send('POST', '/api/profile/nin', { nin: '12345678903' }, provider.data.token);
     await send('PATCH', '/api/profile', { name: 'Pro Vider', businessName: 'Notif Barbing', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'Barbing appointments and home visits for customers across Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/ceo.jpg' }, provider.data.token);
-    const listing = await send('POST', '/api/provider/listings', { niche: 'Barbing', title: 'Fades', description: 'Barbing service with home visits in Uyo.', price: 18000, portfolio: ['/uploads/x.jpg'] }, provider.data.token);
+    const listing = await send('POST', '/api/provider/listings', { niche: 'Barbing', title: 'Fades', description: 'Barbing service with home visits in Uyo.', portfolio: ['/uploads/x.jpg'] }, provider.data.token);
     const customer = await send('POST', '/api/auth/register', { name: 'Cus Tomer', username: 'notifcustomer', email: 'buyer@example.com', password, role: 'customer' });
 
     // Provider saves a bank account: a Paystack recipient code is created and stored.
@@ -55,11 +55,20 @@ const server = app.listen(0, async () => {
     assert.equal(account.status, 201);
 
     // Booking request notifies the provider and the admin.
-    const booking = await send('POST', '/api/bookings', { providerId: listing.data.listing.id, neighbourhood: 'Ewet', time: 'Tomorrow' }, customer.data.token);
+    const negotiate = async (customerToken, providerToken, listingId, amount, where = { neighbourhood: 'Ewet', time: 'Tomorrow' }) => {
+      const chat = await send('POST', '/api/chats', { listingId }, customerToken);
+      assert.equal(chat.status, 201);
+      assert.equal((await send('POST', `/api/chats/${chat.data.conversation.id}/messages`, { text: 'Hello, how much for this service?' }, customerToken)).status, 201);
+      assert.equal((await send('POST', `/api/chats/${chat.data.conversation.id}/offer`, { amount }, providerToken)).status, 201);
+      return send('POST', `/api/chats/${chat.data.conversation.id}/book`, where, customerToken);
+    };
+    const booking = await negotiate(customer.data.token, provider.data.token, listing.data.listing.id, 18000);
     assert.equal(booking.status, 201);
     await settle();
     let inbox = await send('GET', '/api/notifications', undefined, provider.data.token);
-    assert.equal(inbox.data.notifications[0].title, 'New booking request');
+    assert.equal(inbox.data.notifications[0].title, 'Customer agreed to your price');
+    assert(inbox.data.notifications.some((item) => /New customer message/.test(item.title)), 'first chat message notifies the provider');
+    assert(emails.some((mail) => mail.to[0] === 'provider@example.com' && /dashboard\.html#messages\?chat=/.test(`${mail.html}${mail.text}`)), 'the email carries the chat link');
     assert(emails.some((mail) => mail.to[0] === 'provider@example.com'));
     assert(emails.some((mail) => mail.to[0] === 'admin@example.com'));
     assert(phoneAlerts.length >= 1);

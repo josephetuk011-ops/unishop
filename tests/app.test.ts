@@ -104,7 +104,7 @@ describe('E-Marketplace Application', () => {
 
       const listing = await request(app).post('/api/provider/listings')
         .set('Authorization', `Bearer ${registration.body.token}`)
-        .send({ niche: 'Barbing', title: 'Uyo home barber', description: 'Barber appointments in Uyo homes.', price: 5000, portfolio: ['/uploads/test-barber.jpg'] });
+        .send({ niche: 'Barbing', title: 'Uyo home barber', description: 'Barber appointments in Uyo homes.', portfolio: ['/uploads/test-barber.jpg'] });
       expect(listing.status).toBe(201);
 
       const noPassword = await request(app).get('/api/admin/dashboard');

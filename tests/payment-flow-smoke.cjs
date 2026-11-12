@@ -79,11 +79,11 @@ const server = app.listen(0, async () => {
     }, provider.data.token);
     assert.equal(providerProfile.status, 200);
     const listing = await send('POST', '/api/provider/listings', {
-      niche: 'Barbing', title: 'Uyo fades', description: 'Barbing service with home visits in Uyo.', price: 18000, portfolio: ['/uploads/test-portfolio.jpg']
+      niche: 'Barbing', title: 'Uyo fades', description: 'Barbing service with home visits in Uyo.', portfolio: ['/uploads/test-portfolio.jpg']
     }, provider.data.token);
     assert.equal(listing.status, 201);
     const listingId = listing.data.listing.id;
-    const editedListing = await send('PATCH', `/api/provider/listings/${listingId}`, { description: 'Barbing service with home visits across Uyo.', price: 18000 }, provider.data.token);
+    const editedListing = await send('PATCH', `/api/provider/listings/${listingId}`, { description: 'Barbing service with home visits across Uyo.' }, provider.data.token);
     assert.equal(editedListing.status, 200);
     assert.match(editedListing.data.listing.description, /across Uyo/);
     assert.equal((await send('PATCH', `/api/provider/listings/${listingId}`, { price: 10 }, provider.data.token)).status, 400);
@@ -96,9 +96,14 @@ const server = app.listen(0, async () => {
     const customerLogin = await send('POST', '/api/auth/login', { username: 'uyocustomer', password: 'A-secure-test-password' });
     assert.equal(customerLogin.data.user.role, 'customer');
 
-    const booking = await send('POST', '/api/bookings', {
-      providerId: listing.data.listing.id, neighbourhood: 'Ewet Housing', time: 'Tomorrow morning'
-    }, registration.data.token);
+    const negotiate = async (customerToken, providerToken, listingId, amount, where = { neighbourhood: 'Ewet', time: 'Tomorrow' }) => {
+      const chat = await send('POST', '/api/chats', { listingId }, customerToken);
+      assert.equal(chat.status, 201);
+      assert.equal((await send('POST', `/api/chats/${chat.data.conversation.id}/messages`, { text: 'Hello, how much for this service?' }, customerToken)).status, 201);
+      assert.equal((await send('POST', `/api/chats/${chat.data.conversation.id}/offer`, { amount }, providerToken)).status, 201);
+      return send('POST', `/api/chats/${chat.data.conversation.id}/book`, where, customerToken);
+    };
+    const booking = await negotiate(registration.data.token, provider.data.token, listing.data.listing.id, 18000, { neighbourhood: 'Ewet Housing', time: 'Tomorrow morning' });
     assert.equal(booking.status, 201);
 
     const seller = await send('POST', '/api/auth/register', {
@@ -148,7 +153,7 @@ const server = app.listen(0, async () => {
     const providerVideo = await uploadMedia('/api/uploads/short-video', 'video', 'service.mp4', 'video/mp4', Buffer.from('mock-mp4-content'), provider.data.token, { duration: 30 });
     assert.equal(providerVideo.status, 201);
     const shortService = await send('POST', '/api/provider/listings', {
-      niche: 'Barbing', title: 'Short video barbing service', description: 'A barbing service listing with a short video.', price: 18000, portfolio: ['/uploads/test-portfolio.jpg'], video: providerVideo.data.video, videoDuration: providerVideo.data.videoDuration
+      niche: 'Barbing', title: 'Short video barbing service', description: 'A barbing service listing with a short video.', portfolio: ['/uploads/test-portfolio.jpg'], video: providerVideo.data.video, videoDuration: providerVideo.data.videoDuration
     }, provider.data.token);
     assert.equal(shortService.status, 201);
     assert.equal(shortService.data.listing.video, providerVideo.data.video);
