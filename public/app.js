@@ -165,7 +165,7 @@ function renderProducts() {
   });
   const serviceMarkup = marketMode === 'goods' ? [] : services.map((provider, index) => {
     const image = provider.portfolio?.[0] || provider.image || serviceNiches.find(([name]) => name === (provider.niche || provider.category))?.[1];
-    return `<article class="product-card service-market-card" style="animation-delay:${(index + goodsMarkup.length) * 35}ms"><button class="service-market-image" data-book="${provider.id}" aria-label="View and book ${provider.title || provider.trade}"><img src="${imageUrl(image, 760)}" alt="${provider.title || provider.trade} by ${provider.provider || provider.name}" loading="lazy"><span class="service-image-tag">${provider.niche || provider.category || 'LOCAL SERVICE'}</span><span class="service-open-label">View service ↗</span></button><div class="product-details"><div class="product-vendor">${provider.provider || provider.name} · ${provider.neighbourhood || 'Uyo, Akwa Ibom'}</div><h3 class="product-name">${provider.title || provider.trade}</h3><div class="product-bottom"><span class="product-rating"><b>★</b> ${Number(provider.rating || 0).toFixed(1)} <span>(${provider.reviewCount || provider.reviews || 0})</span></span>${provider.online ? '<span class="online-dot">Online</span>' : ''}</div><div class="product-bottom"><button class="negotiate-button" data-book="${provider.id}">Proceed to negotiation</button></div></div></article>`;
+    return `<article class="product-card service-market-card" style="animation-delay:${(index + goodsMarkup.length) * 35}ms"><button class="service-market-image" data-view-service="${provider.id}" aria-label="View details of ${provider.title || provider.trade}"><img src="${imageUrl(image, 760)}" alt="${provider.title || provider.trade} by ${provider.provider || provider.name}" loading="lazy"><span class="service-image-tag">${provider.niche || provider.category || 'LOCAL SERVICE'}</span><span class="service-open-label">View service ↗</span></button><div class="product-details"><div class="product-vendor">${provider.provider || provider.name} · ${provider.neighbourhood || 'Uyo, Akwa Ibom'}</div><h3 class="product-name">${provider.title || provider.trade}</h3><div class="product-bottom"><span class="product-rating"><b>★</b> ${Number(provider.rating || 0).toFixed(1)} <span>(${provider.reviewCount || provider.reviews || 0})</span></span>${provider.online ? '<span class="online-dot">Online</span>' : ''}</div><div class="product-bottom"><button class="negotiate-button" data-book="${provider.id}">Proceed to negotiation</button></div></div></article>`;
   });
   const withHeadings = (items, markup, labelFor, keyFor, kind) => {
     const output = [];
@@ -663,6 +663,8 @@ productGrid.addEventListener('click', (event) => {
     showToast(saved.has(id) ? 'Saved to your favourites' : 'Removed from favourites');
     return;
   }
+  const viewService = event.target.closest('[data-view-service]');
+  if (viewService) { location.assign(`/service.html?id=${encodeURIComponent(viewService.dataset.viewService)}`); return; }
   if (bookButton) { openBooking(bookButton.dataset.book); return; }
   if (productDetailButton) openProductDetail(productDetailButton.dataset.productDetail);
 });
