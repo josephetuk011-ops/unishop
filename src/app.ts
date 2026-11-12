@@ -1768,7 +1768,7 @@ app.get('/api/me/orders', (request: Request, response: Response) => {
   response.json(state.orders.filter((order) => order.userId === user.id).map(safeOrder));
 });
 // ---- Negotiation chat between a customer and a service provider ----
-const chatWarning = 'Do not share phone numbers, account numbers or email addresses. Accounts that do are suspended automatically.';
+const chatWarning = 'Do not share bank account numbers; accounts that do are suspended automatically. No mobile calls until after payment is made; accounts that call before payment are suspended.';
 function chatOtherParty(conversation: any, userId: string) {
   return state.users.find((member) => member.id === (conversation.customerId === userId ? conversation.providerUserId : conversation.customerId));
 }

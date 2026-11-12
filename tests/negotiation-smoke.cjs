@@ -13,8 +13,8 @@ process.env.UPLOADS_DIRECTORY = path.join(dir, 'uploads');
 
 require('ts-node/register');
 const { detectContactInfo } = require('../src/chatGuard');
-const caught = ['call me on 08031234567', 'my number is +234 803 123 4567', 'acct 0123456789 gtb', '0 8 0 3 1 2 3 4 5 6 7', 'zero eight zero three one two three four five six seven', 'mail me joe@gmail.com', 'joe at gmail dot com', 'joe(at)yahoo.com', '080-3123-4567'];
-const allowed = ['I need 3 chairs and 2 tables for 5 days', 'Can you do 25,000 naira?', 'Price is 1,500,000 for the whole job', 'Come at 4pm on 12/11/2026', 'one or two hours is fine'];
+const caught = ['acct 0123456789 gtb', '0 1 2 3 4 5 6 7 8 9', 'zero one two three four five six seven eight nine', 'send to 2012-345-678 zenith', '3012345678'];
+const allowed = ['call me on 08031234567', 'my number is +234 803 123 4567', '080-3123-4567', 'mail me joe@gmail.com', 'I need 3 chairs and 2 tables for 5 days', 'Can you do 25,000 naira?', 'Price is 1,500,000 for the whole job', 'Come at 4pm on 12/11/2026', 'one or two hours is fine'];
 caught.forEach((text) => assert.ok(detectContactInfo(text).found, `should catch: ${text}`));
 allowed.forEach((text) => assert.ok(!detectContactInfo(text).found, `should allow: ${text}`));
 
@@ -62,16 +62,16 @@ const server = app.listen(0, async () => {
     assert.equal(booking.data.booking.amountNaira, 6000);
 
     // Sharing contact details suspends the sender, hides the message from the other side, and keeps it for admin.
-    const bad = await send('POST', `/api/chats/${chat.id}/messages`, { text: 'Pay me directly, call 0803 123 4567' }, ct);
+    const bad = await send('POST', `/api/chats/${chat.id}/messages`, { text: 'Pay me directly, account 0123456789 GTBank' }, ct);
     assert.equal(bad.status, 403);
     assert.equal(bad.data.suspended, true);
     assert.equal((await send('GET', '/api/chats', undefined, ct)).status, 401, 'the suspended customer is signed out');
-    assert.ok(!JSON.stringify((await send('GET', `/api/chats/${chat.id}`, undefined, pt)).data).includes('0803'), 'the provider never sees the blocked message');
+    assert.ok(!JSON.stringify((await send('GET', `/api/chats/${chat.id}`, undefined, pt)).data).includes('0123456789'), 'the provider never sees the blocked message');
     const admin = (await send('POST', '/api/admin/login', { password: process.env.ADMIN_PASSWORD })).data.token;
     const list = (await send('GET', '/api/admin/records?kind=chats', undefined, admin)).data;
     assert.equal(list.records[0].violations, 1);
     const full = (await send('GET', `/api/admin/chats/${chat.id}`, undefined, admin)).data;
-    assert.ok(full.messages.some((m) => m.violation && m.text.includes('0803')), 'admin sees the blocked message');
+    assert.ok(full.messages.some((m) => m.violation && m.text.includes('0123456789')), 'admin sees the blocked message');
     const restored = await send('PATCH', `/api/admin/users/${customer.data.user.id}/suspension`, { suspended: false }, admin);
     assert.equal(restored.status, 200, 'admin can restore a customer');
     assert.equal((await send('GET', '/api/chats', undefined, ct)).status, 200);

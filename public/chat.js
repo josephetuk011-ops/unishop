@@ -4,7 +4,7 @@
   const money = (value) => `₦${Number(value || 0).toLocaleString('en-NG')}`;
   const safeUrl = (url) => (/^(https:\/\/res\.cloudinary\.com\/|\/uploads\/)/.test(String(url)) ? url : '');
   const token = () => localStorage.getItem('unishop-token') || '';
-  const warningHtml = '<strong>Strict warning:</strong> do not share phone numbers, bank account numbers or email addresses in this chat. Any account that does is <strong>suspended automatically</strong>. Keep the deal and the payment on Unishop.';
+  const warningHtml = '<strong>Strict warning:</strong> do not share bank account numbers in this chat. Any account that does is <strong>suspended automatically</strong>. Do not make any mobile call to each other until after payment is made. Any account that does is <strong>suspended</strong>.';
 
   async function refreshSession() {
     try {
