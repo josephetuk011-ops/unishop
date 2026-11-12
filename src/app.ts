@@ -1362,8 +1362,11 @@ app.patch('/api/provider/listings/:id', (request: Request, response: Response) =
   if (title !== undefined && (typeof title !== 'string' || title.trim().length < 3 || title.length > 100)) fail(400, 'Enter a service title.');
   if (description !== undefined && (typeof description !== 'string' || description.trim().length < 10 || description.length > 1500)) fail(400, 'Describe your service in at least 10 characters.');
   if (price !== undefined && price !== null && price !== '') fail(400, 'Service providers do not set a price. Customers negotiate it with you in chat.');
+  const newPortfolio = request.body?.portfolio;
+  if (newPortfolio !== undefined && (!Array.isArray(newPortfolio) || newPortfolio.length < 1 || newPortfolio.length > 10 || newPortfolio.some((image: any) => !isMediaRef(image, 'image')))) fail(400, 'Keep 1 to 10 work photos.');
   if (title !== undefined) listing.title = title.trim();
   if (description !== undefined) listing.description = description.trim();
+  if (newPortfolio !== undefined) listing.portfolio = [...new Set<string>(newPortfolio)];
   listing.updatedAt = new Date().toISOString();
   saveState();
   response.json({ listing });
@@ -1443,6 +1446,8 @@ app.patch('/api/seller/products/:id', (request: Request, response: Response) => 
     cleanedSpecs = cleanSpecs(category ?? product.category, request.body?.specs ?? (category !== undefined && category !== product.category ? {} : product.specs));
     if (cleanedSpecs.error) fail(400, cleanedSpecs.error);
   }
+  const newImages = request.body?.images;
+  if (newImages !== undefined && (!Array.isArray(newImages) || newImages.length < 1 || newImages.length > 10 || newImages.some((item: any) => !isMediaRef(item, 'image')))) fail(400, 'Keep 1 to 10 product photos.');
   const stockFields = parseStock(request.body);
   const preorderFields = parsePreorder(request.body, product);
   const hasSizes = Array.isArray(product.sizes) && product.sizes.length > 0;
@@ -1453,6 +1458,7 @@ app.patch('/api/seller/products/:id', (request: Request, response: Response) => 
     if (hasSizes || stockFields.sizes) fail(400, 'This product is stocked by size. Enter the number for each size instead.');
   }
   // Apply only after every field has validated.
+  if (newImages !== undefined) { product.images = [...new Set<string>(newImages)]; product.image = product.images[0]; }
   if (name !== undefined) product.name = name.trim();
   if (category !== undefined) product.category = category;
   if (description !== undefined) product.description = description.trim();
