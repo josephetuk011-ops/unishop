@@ -202,7 +202,7 @@
       if (!host.isConnected) return clearInterval(timer);
       try {
         const data = await call('/api/chats');
-        listEl.innerHTML = data.conversations.length ? data.conversations.map((item) => `<button type="button" class="uc-item${item.id === activeId ? ' active' : ''}" data-chat="${esc(item.id)}"><span class="uc-avatar">${esc((item.otherName || '?').charAt(0).toUpperCase())}<i class="uc-pip${item.otherOnline ? ' on' : ''}"></i></span><span class="uc-meta"><strong>${esc(item.otherName)}</strong><small>${esc(item.listingTitle || '')}</small><em>${esc((item.lastMessage || 'No messages yet').slice(0, 60))}</em></span>${item.unread ? `<b class="uc-badge">${item.unread}</b>` : ''}</button>`).join('') : '<div class="uc-empty">No conversations yet. When a customer starts a negotiation, it appears here.</div>';
+        listEl.innerHTML = data.conversations.length ? data.conversations.map((item) => `<button type="button" class="uc-item${item.id === activeId ? ' active' : ''}" data-chat="${esc(item.id)}"><span class="uc-avatar">${esc((item.otherName || '?').charAt(0).toUpperCase())}<i class="uc-pip${item.otherOnline ? ' on' : ''}"></i></span><span class="uc-meta"><strong>${esc(item.otherName)}</strong><small>${esc(item.listingTitle || '')}</small><em>${esc((item.lastMessage || 'No messages yet').slice(0, 60))}</em></span>${item.unread ? `<b class="uc-badge">${item.unread}</b>` : ''}</button>`).join('') : '<div class="uc-empty">No conversations yet. Tap Proceed to negotiation on a service to start one.</div>';
       } catch (error) { listEl.innerHTML = `<div class="uc-empty">${esc(error.message)}</div>`; }
     }
     listEl.addEventListener('click', (event) => { const item = event.target.closest('[data-chat]'); if (item) open(item.dataset.chat); });
@@ -214,6 +214,35 @@
     const run = async () => { if (!token() || document.hidden) return; try { callback((await call('/api/chats')).unread || 0); } catch { /* signed out */ } };
     run(); setInterval(run, 15000);
   }
+
+  // Floating chat button for signed-in customers: opens the list of people they have chatted with.
+  let fabUnread = 0;
+  function ensureFab() {
+    let user = {};
+    try { user = JSON.parse(localStorage.getItem('unishop-user') || '{}'); } catch { /* ignore */ }
+    const show = Boolean(token()) && user.role === 'customer';
+    let fab = document.querySelector('#uc-fab');
+    if (!show) { fab?.remove(); return; }
+    if (fab) return;
+    fab = document.createElement('button');
+    fab.id = 'uc-fab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Open your chats');
+    fab.innerHTML = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg><b id="uc-fab-badge" hidden></b>';
+    fab.addEventListener('click', () => {
+      const link = document.querySelector('#messages-nav-link');
+      if (link) link.click();
+      else location.assign('/dashboard.html#messages');
+    });
+    document.body.appendChild(fab);
+    const badge = fab.querySelector('#uc-fab-badge'); badge.textContent = fabUnread; badge.hidden = !fabUnread;
+  }
+  function updateFabBadge(count) {
+    fabUnread = count;
+    const badge = document.querySelector('#uc-fab-badge');
+    if (badge) { badge.textContent = count > 99 ? '99+' : String(count); badge.hidden = !count; }
+  }
+  async function pollFab() { ensureFab(); if (!document.querySelector('#uc-fab') || document.hidden) return; try { updateFabBadge((await call('/api/chats')).unread || 0); } catch { /* signed out */ } }
+  const startFab = () => { ensureFab(); pollFab(); setInterval(ensureFab, 3000); setInterval(pollFab, 15000); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startFab); else startFab();
 
   window.UnishopChat = { openModal, mountInbox, watchUnread, call };
 })();
