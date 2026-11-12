@@ -1,13 +1,4 @@
-const products = [
-  { id: 'linen-set', name: 'Everyday linen set', seller: 'Sunday Studio, Uyo', category: 'Home', price: 28500, oldPrice: 36000, rating: '4.9', reviews: 84, badge: 'LOCAL FAVOURITE', image: 'photo-1616486338812-3dadae4b4ace' },
-  { id: 'crossbody', name: 'The soft-side crossbody', seller: 'Moyo Atelier, Uyo', category: 'Fashion', price: 18900, rating: '4.8', reviews: 62, badge: 'JUST LANDED', image: 'photo-1548036328-c9fa89d128fa' },
-  { id: 'face-oil', name: 'Glow ritual face oil', seller: 'Ora Botanics, Uyo', category: 'Beauty', price: 12500, rating: '5.0', reviews: 41, badge: 'SMALL BATCH', image: 'photo-1608248543803-ba4f8c70ae0b' },
-  { id: 'headphones', name: 'Studio wireless headphones', seller: 'Circuit & Co., Uyo', category: 'Tech', price: 47500, rating: '4.7', reviews: 119, badge: 'GOOD FIND', image: 'photo-1505740420928-5e560c06d30e' },
-  { id: 'ceramic-cup', name: 'Sunday morning cup', seller: 'Clay Things, Uyo', category: 'Home', price: 8900, rating: '4.9', reviews: 37, badge: 'HANDMADE', image: 'photo-1514228742587-6b1558fcca3d' },
-  { id: 'woven-tote', name: 'Market day woven tote', seller: 'Abeni Goods, Uyo', category: 'Fashion', price: 14900, rating: '4.8', reviews: 55, badge: 'LOCAL FAVOURITE', image: 'photo-1590874103328-eac38a683ce7' },
-  { id: 'skin-kit', name: 'The soft-skin starter kit', seller: 'Ora Botanics, Uyo', category: 'Beauty', price: 22000, rating: '4.9', reviews: 28, badge: 'BUNDLE & SAVE', image: 'photo-1556229010-6c3f2c9ca5f8' },
-  { id: 'speaker', name: 'Pocket-sized good tunes', seller: 'Circuit & Co., Uyo', category: 'Tech', price: 31500, rating: '4.8', reviews: 93, badge: 'TRENDING', image: 'photo-1608043152269-423dbba4e7e1' }
-];
+const products = [];
 
 const vendorProducts = [];
 const providers = [];
@@ -234,7 +225,7 @@ function openProductDetail(productId) {
   const product = products.find((item) => item.id === productId);
   if (!product) return;
   const media = document.querySelector('#detail-media');
-  const gallery = Array.isArray(product.images) && product.images.length ? product.images.slice(0, 3) : [product.image];
+  const gallery = Array.isArray(product.images) && product.images.length ? product.images.slice(0, 10) : [product.image];
   media.innerHTML = `<img class="detail-image" src="${imageUrl(gallery[0], 1200)}" alt="${product.name}">${gallery.length > 1 ? `<div class="detail-thumbs">${gallery.map((photo, index) => `<button type="button" class="detail-thumb${index === 0 ? ' active' : ''}" data-photo="${escapeShortText(imageUrl(photo, 1200))}" aria-label="Show photo ${index + 1} of ${gallery.length}"><img src="${escapeShortText(imageUrl(photo, 160))}" alt=""></button>`).join('')}</div>` : ''}${product.video ? `<video class="detail-video" src="${imageUrl(product.video)}" controls playsinline preload="metadata" aria-label="Vendor or brand video showing ${product.name}"></video>` : ''}`;
   document.querySelector('#detail-category').textContent = `${product.category} · UYO MARKETPLACE`;
   document.querySelector('#product-detail-title').textContent = product.name;
@@ -483,12 +474,26 @@ document.querySelector('.close-drawer').addEventListener('click', closeCart);
 document.querySelector('.close-empty').addEventListener('click', closeCart);
 backdrop.addEventListener('click', closeCart);
 
+function describeRequestFailure(url, options, status, result) {
+  const where = `${(options.method || 'GET').toUpperCase()} ${String(url).split('?')[0]}`;
+  const message = result.error || 'The request could not be completed.';
+  if (status === 401 || status === 403) return `${message} (Problem: your sign-in or account permission. Source: ${where}, HTTP ${status}.)`;
+  if (status === 429) return `${message} (Problem: too many attempts from this device. Source: ${where}.)`;
+  if (status >= 500) return `${message} (Problem: the Unishop server. Source: ${where}, HTTP ${status}.)`;
+  return `${message} (Problem: what was entered. Source: ${where}, HTTP ${status}.)`;
+}
+function describeNetworkFailure(url, options) {
+  const where = `${(options.method || 'GET').toUpperCase()} ${String(url).split('?')[0]}`;
+  return navigator.onLine === false
+    ? `Your device is offline. Reconnect to the internet and try again. (Source: ${where}.)`
+    : `Could not reach the Unishop server, so nothing was saved. The problem is the network, a blocked connection, or the server being down, not your details. (Source: ${where}.)`;
+}
 function apiRequest(url, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (sessionToken) headers.Authorization = `Bearer ${sessionToken}`;
-  return fetch(url, { ...options, headers }).then(async (response) => {
+  return fetch(url, { ...options, headers }).catch(() => { throw new Error(describeNetworkFailure(url, options)); }).then(async (response) => {
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || 'The request could not be completed.');
+    if (!response.ok) throw new Error(describeRequestFailure(url, options, response.status, result));
     return result;
   });
 }
@@ -867,7 +872,7 @@ if (localStorage.getItem('unishop-theme') === 'dark') document.body.classList.ad
 { const welcome = document.querySelector('#welcome-strip'); if (welcome && !sessionToken) welcome.hidden = false; }
 if (new URLSearchParams(window.location.search).get('signin') && !sessionToken) { history.replaceState(null, '', '/'); openAuth('customer', 'login'); }
 fetch('/api/services').then((response) => response.ok ? response.json() : []).then((data) => {
-  if (Array.isArray(data) && data.length) {
+  if (Array.isArray(data)) {
     providers.splice(0, providers.length, ...data);
     renderProviders(activeNiche);
     renderShorts();
@@ -876,7 +881,7 @@ fetch('/api/services').then((response) => response.ok ? response.json() : []).th
 }).catch(() => {});
 function loadProducts() {
   return fetch('/api/products').then((response) => response.ok ? response.json() : []).then((data) => {
-    if (Array.isArray(data) && data.length) {
+    if (Array.isArray(data)) {
       const known = new Set(catalogIds);
       vendorProducts.forEach((old) => { const index = products.findIndex((product) => product.id === old.id); if (index >= 0) products.splice(index, 1); });
       vendorProducts.splice(0, vendorProducts.length, ...data.filter((product) => !known.has(product.id)));

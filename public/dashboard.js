@@ -44,7 +44,7 @@ function endSession() {
 async function api(url, options = {}, retried = false) {
   const headers = { Authorization: `Bearer ${token}`, ...(options.headers || {}) };
   if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers }).catch(() => { throw new Error(navigator.onLine === false ? `Your device is offline. Reconnect and try again. (Source: ${(options.method || 'GET').toUpperCase()} ${url.split('?')[0]}.)` : `Could not reach the Unishop server, so nothing was saved. The problem is the network, a blocked connection, or the server being down, not your details. (Source: ${(options.method || 'GET').toUpperCase()} ${url.split('?')[0]}.)`); });
   if (response.status === 401 && !retried && url !== '/api/auth/refresh') {
     // The access token only lasts 15 minutes; renew it from the refresh cookie and retry once.
     if (await refreshSession()) return api(url, options, true);
@@ -53,7 +53,11 @@ async function api(url, options = {}, retried = false) {
     throw error;
   }
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'The request could not be completed.');
+  if (!response.ok) {
+    const source = `${(options.method || 'GET').toUpperCase()} ${url.split('?')[0]}`;
+    const cause = response.status >= 500 ? 'the Unishop server' : response.status === 401 || response.status === 403 ? 'your sign-in or account permission' : 'what was entered';
+    throw new Error(`${result.error || 'The request could not be completed.'} (Problem: ${cause}. Source: ${source}, HTTP ${response.status}.)`);
+  }
   return result;
 }
 function metric(label, value, detail = '') {
@@ -170,10 +174,10 @@ function providerDashboard() {
 }
 function serviceForm() {
   const options = roleNiches.map((niche) => `<option value="${escapeHtml(niche)}" ${dashboardData.user.niche === niche ? 'selected' : ''}>${escapeHtml(niche)}</option>`).join('');
-  return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><p class="form-help full">You do not set a price. Customers tap Proceed to negotiation and agree the price with you in chat.</p><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 6 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · Any video · under 2 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
+  return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><p class="form-help full">You do not set a price. Customers tap Proceed to negotiation and agree the price with you in chat.</p><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 10 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · Any video · up to 6 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerForm() {
-  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option value="" disabled selected>Choose a category</option>${categoryOptions()}</select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><div class="full" data-spec-fields></div>${availabilityFields()}<label class="form-field stock-field">Quantity available<input name="quantity" type="number" min="0" max="100000" step="1" required value="1"></label><label class="form-field stock-field">Sizes <span class="form-help">Optional. Number available per size, like S:5, M:3, L:2. When filled, the quantity above is ignored.</span><input name="sizes" maxlength="200" placeholder="S:5, M:3, L:2"></label><label class="form-field">Product photos <span class="form-help">1 to 3 photos. The first is the cover.</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label><div class="upload-preview full" id="product-preview"></div><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · Any video · under 2 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
+  return `<section class="panel editor-panel" id="product-editor" hidden><header class="panel-heading"><h3>Add a product</h3></header><div class="panel-body"><form class="form-grid" id="product-form"><label class="form-field">Product name<input name="name" required minlength="3" maxlength="100"></label><label class="form-field">Category<select name="category" required><option value="" disabled selected>Choose a category</option>${categoryOptions()}</select></label><label class="form-field">Price in NGN<input name="price" type="number" required min="100" step="100"></label><div class="full" data-spec-fields></div>${availabilityFields()}<label class="form-field stock-field">Quantity available<input name="quantity" type="number" min="0" max="100000" step="1" required value="1"></label><label class="form-field stock-field">Sizes <span class="form-help">Optional. Number available per size, like S:5, M:3, L:2. When filled, the quantity above is ignored.</span><input name="sizes" maxlength="200" placeholder="S:5, M:3, L:2"></label><label class="form-field">Product photos <span class="form-help">1 to 10 photos, 5 MB each. The first is the cover.</span><input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required></label><div class="upload-preview full" id="product-preview"></div><label class="form-field full">Description<textarea name="description" required minlength="5" maxlength="1000"></textarea></label><label class="form-field full">Product short video <span class="form-help">Optional · Any video · up to 6 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="form-actions"><button class="primary-button" type="submit">Publish product</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerDashboard() {
   const { products, orders, metrics, user } = dashboardData;
@@ -381,7 +385,7 @@ async function uploadFiles(files) {
 }
 async function uploadShortVideo(file) {
   if (!file) return undefined;
-  if (file.size >= 2 * 1024 * 1024) throw new Error('Video must be under 2 MB.');
+  if (file.size > 6 * 1024 * 1024) throw new Error('Video must be 6 MB or smaller. Your file is ' + (file.size / 1048576).toFixed(1) + ' MB.');
   const videoDuration = await new Promise((resolve, reject) => {
     const video = document.createElement('video');
     const source = URL.createObjectURL(file);
@@ -561,16 +565,16 @@ document.addEventListener('change', (event) => {
   if (event.target.matches('#product-form [name="images"]')) {
     const files = [...event.target.files];
     const preview = document.querySelector('#product-preview');
-    if (files.length > 3) {
+    if (files.length > 10) {
       event.target.value = '';
       preview.innerHTML = '';
-      notify('Choose up to 3 photos per product.');
+      notify('Choose up to 10 photos per product.');
     } else {
       preview.innerHTML = files.map((image) => `<img alt="Selected product photo" src="${URL.createObjectURL(image)}">`).join('');
     }
   }
   if (event.target.matches('#service-form [name="images"]')) {
-    const images = [...event.target.files].slice(0, 6);
+    const images = [...event.target.files].slice(0, 10);
     document.querySelector('#service-preview').innerHTML = images.map((image) => `<img alt="Selected work photo" src="${URL.createObjectURL(image)}">`).join('');
   }
   if (event.target.matches('#ceo-image-input') && event.target.files[0]) {
@@ -689,7 +693,7 @@ document.addEventListener('submit', async (event) => {
     button.disabled = true;
     try {
       const photos = [...form.elements.images.files];
-      if (photos.length < 1 || photos.length > 3) throw new Error('Choose 1 to 3 product photos.');
+      if (photos.length < 1 || photos.length > 10) throw new Error('Choose 1 to 10 product photos.');
       const uploaded = await uploadFiles(photos);
       const uploadedVideo = await uploadShortVideo(form.elements.video.files[0]);
       await api('/api/seller/products', { method: 'POST', body: JSON.stringify({ name: form.elements.name.value, category: form.elements.category.value, description: form.elements.description.value, price: form.elements.price.value, specs: collectSpecs(form), ...(form.elements.availability.value === 'preorder' ? { preorder: true, preorderDays: Number(form.elements.preorderDays.value) } : { quantity: form.elements.quantity.value, sizes: parseSizes(form.elements.sizes.value) }), images: uploaded.images, video: uploadedVideo?.video, videoDuration: uploadedVideo?.videoDuration }) });

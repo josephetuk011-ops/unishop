@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 
 process.env.NODE_ENV = 'test';
+process.env.NIN_VERIFICATION_ENABLED = 'true';
 process.env.PAYSTACK_SECRET_KEY = 'sk_test_mock_only';
 process.env.JWT_SECRET = 'local-integration-signing-secret';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'unishop-referral-'));
@@ -34,12 +35,22 @@ const server = app.listen(0, async () => {
   try {
     const stamp = Date.now();
     const reg = (username, extra = {}) => send('POST', '/api/auth/register', { name: 'Ref Person', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'customer', ...extra });
+    // The built-in demo catalogue is gone, so create one real vendor product (28,500 naira) to buy.
+    const sellerReg = await send('POST', '/api/auth/register', { name: 'Ref Seller', username: `refsel${stamp}`, email: `refsel${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Ref Store' });
+    assert.equal((await send('POST', '/api/profile/nin', { nin: '12345678903' }, sellerReg.data.token)).status, 200);
+    assert.equal((await send('PATCH', '/api/profile', { name: 'Ref Seller', businessName: 'Ref Store', position: 'Owner', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'A local shop sharing practical goods with customers around Uyo.', profileImage: '/uploads/a.jpg', ceoImage: '/uploads/b.jpg' }, sellerReg.data.token)).status, 200);
+    const form = new FormData(); form.append('images', new Blob([Buffer.from([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' }), 'i.jpg');
+    const up = await nativeFetch(base + '/api/uploads/portfolio', { method: 'POST', headers: { authorization: `Bearer ${sellerReg.data.token}` }, body: form });
+    const image = (await up.json()).images[0];
+    const product = await send('POST', '/api/seller/products', { name: 'Linen test set', category: 'Home', description: 'A linen test set for referral tests.', price: 28500, image }, sellerReg.data.token);
+    assert.equal(product.status, 201);
+    const productId = product.data.product.id;
     const a = await reg(`rewa${stamp}`);
     const code = (await send('GET', '/api/me/referral', null, a.data.token)).data.code;
     const b = await reg(`rewb${stamp}`, { ref: code });
     const info = (await send('GET', '/api/me/referral', null, b.data.token)).data;
     assert.equal(info.welcomeAvailable, true);
-    const pay = (token, mail) => send('POST', '/api/payments/initialize', { email: mail, customer: { name: 'Ref Person', phone: '08000000000' }, delivery: { address: '12 Test Street', neighbourhood: 'Ewet Housing' }, items: [{ id: 'linen-set', quantity: 1 }] }, token);
+    const pay = (token, mail) => send('POST', '/api/payments/initialize', { email: mail, customer: { name: 'Ref Person', phone: '08000000000' }, delivery: { address: '12 Test Street', neighbourhood: 'Ewet Housing' }, items: [{ id: productId, quantity: 1 }] }, token);
     const plain = await pay(a.data.token, 'a@example.com');
     const price = plain.data.order.totalNaira;
     assert.equal(plain.data.order.rewardDiscountNaira, 0);

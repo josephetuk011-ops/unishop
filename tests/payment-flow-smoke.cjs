@@ -128,9 +128,11 @@ const server = app.listen(0, async () => {
     const movVideo = await uploadMedia('/api/uploads/short-video', 'video', 'clip.mov', 'video/quicktime', Buffer.from('mock-mov-content'), provider.data.token, { duration: 5 });
     assert.equal(movVideo.status, 201);
     assert.match(movVideo.data.video, /\.mov$/);
-    const bigVideo = await uploadMedia('/api/uploads/short-video', 'video', 'big.mp4', 'video/mp4', Buffer.alloc(2 * 1024 * 1024), provider.data.token, { duration: 5 });
+    const bigVideo = await uploadMedia('/api/uploads/short-video', 'video', 'big.mp4', 'video/mp4', Buffer.alloc(6 * 1024 * 1024 + 1), provider.data.token, { duration: 5 });
     assert.equal(bigVideo.status, 400);
-    assert.match(bigVideo.data.error, /under 2 MB/);
+    assert.match(bigVideo.data.error, /6 MB/);
+    const sixMbVideo = await uploadMedia('/api/uploads/short-video', 'video', 'six.mp4', 'video/mp4', Buffer.alloc(5 * 1024 * 1024), provider.data.token, { duration: 5 });
+    assert.equal(sixMbVideo.status, 201);
     const notVideo = await uploadMedia('/api/uploads/short-video', 'video', 'x.txt', 'text/plain', Buffer.from('hi'), provider.data.token, { duration: 5 });
     assert.equal(notVideo.status, 400);
     // security: a page disguised as a video or image is refused, and uploads can never be saved as .html
@@ -173,10 +175,10 @@ const server = app.listen(0, async () => {
       email: 'buyer@example.com',
       customer: { name: 'Test Customer', phone: '08000000000' },
       delivery: { address: '12 Test Street', neighbourhood: 'Ewet Housing' },
-      items: [{ id: 'linen-set', quantity: 1, price: 1 }, { id: sellerProduct.data.product.id, quantity: 1, price: 1 }]
+      items: [{ id: sellerProduct.data.product.id, quantity: 1, price: 1 }]
     }, registration.data.token);
     assert.equal(initialized.status, 201);
-    assert.equal(initializedAmount, 4134500);
+    assert.equal(initializedAmount, 1284500);
     assert.equal(initialized.data.authorizationUrl, 'https://checkout.paystack.com/mock');
 
     const verified = await send('GET', `/api/payments/verify/${initialized.data.reference}`);

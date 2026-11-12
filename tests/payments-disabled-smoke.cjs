@@ -18,7 +18,7 @@ const server = app.listen(0, async () => {
       body: JSON.stringify({
         email: 'buyer@example.com', customer: { name: 'Test Buyer', phone: '08000000000' },
         delivery: { address: '12 Test Street', neighbourhood: 'Ewet Housing' },
-        items: [{ id: 'linen-set', quantity: 1 }]
+        items: [{ id: 'any-product', quantity: 1 }]
       })
     });
     assert.equal(response.status, 503);

@@ -129,16 +129,23 @@ function requireAdmin(request: Request): User {
   return user;
 }
 
-const catalog = [
-  { id: 'linen-set', name: 'Everyday linen set', seller: 'Sunday Studio, Uyo', category: 'Home', price: 28500, image: 'photo-1616486338812-3dadae4b4ace' },
-  { id: 'crossbody', name: 'The soft-side crossbody', seller: 'Moyo Atelier, Uyo', category: 'Fashion', price: 18900, image: 'photo-1548036328-c9fa89d128fa' },
-  { id: 'face-oil', name: 'Glow ritual face oil', seller: 'Ora Botanics, Uyo', category: 'Beauty', price: 12500, image: 'photo-1608248543803-ba4f8c70ae0b' },
-  { id: 'headphones', name: 'Studio wireless headphones', seller: 'Circuit & Co., Uyo', category: 'Tech', price: 47500, image: 'photo-1505740420928-5e560c06d30e' },
-  { id: 'ceramic-cup', name: 'Sunday morning cup', seller: 'Clay Things, Uyo', category: 'Home', price: 8900, image: 'photo-1514228742587-6b1558fcca3d' },
-  { id: 'woven-tote', name: 'Market day woven tote', seller: 'Abeni Goods, Uyo', category: 'Fashion', price: 14900, image: 'photo-1590874103328-eac38a683ce7' },
-  { id: 'skin-kit', name: 'The soft-skin starter kit', seller: 'Ora Botanics, Uyo', category: 'Beauty', price: 22000, image: 'photo-1556229010-6c3f2c9ca5f8' },
-  { id: 'speaker', name: 'Pocket-sized good tunes', seller: 'Circuit & Co., Uyo', category: 'Tech', price: 31500, image: 'photo-1608043152269-423dbba4e7e1' }
-];
+// The built-in demo catalogue was removed: only products uploaded by real vendors are sold.
+const catalog: any[] = [];
+const fieldLabels: Record<string, string> = { name: 'Full name', username: 'Username', email: 'Email address', password: 'Password', role: 'Account type', businessName: 'Business name', niche: 'Service niche', position: 'Position', placeOfOperation: 'Place of operation', aboutMe: 'About you', profileImage: 'Profile photo', ceoImage: 'Owner photo', teamImages: 'Worker photos', ref: 'Referral code' };
+// Names the exact form field each validation problem comes from, e.g. "Username: Enter your username."
+function describeIssues(error: z.ZodError): string {
+  return error.issues.map((issue) => {
+    const key = String(issue.path[0] ?? '');
+    const label = fieldLabels[key] || (key ? key : '');
+    return label && !issue.message.toLowerCase().startsWith(label.toLowerCase()) ? `${label}: ${issue.message}` : issue.message;
+  }).join(' | ');
+}
+function uploadProblem(error: any, what: string, limits: string): string {
+  if (error?.code === 'LIMIT_FILE_SIZE') return `${what} is too large. ${limits}`;
+  if (error?.code === 'LIMIT_FILE_COUNT' || error?.code === 'LIMIT_UNEXPECTED_FILE') return `Too many files in one upload. ${limits}`;
+  return `${what} could not be uploaded: ${error?.message || 'unknown upload error'}.`;
+}
+
 const providers: any[] = [];
 const serviceNiches = [
   'Barbing', 'Cleaning', 'Cooking', 'Hair dressing', 'Decorating', 'Grass clearing', 'Mechanic',
@@ -167,14 +174,14 @@ const imageUpload = multer({
       callback(null, `${Date.now()}-${randomBytes(10).toString('hex')}${extension}`);
     }
   }),
-  limits: { fileSize: 5 * 1024 * 1024, files: 6 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 10 },
   fileFilter: (_request, file, callback) => {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) return callback(new Error('Upload JPG, PNG or WebP images only.'));
     callback(null, true);
   }
 });
 const allowedVideoExtensions = ['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi', '.3gp', '.3g2', '.mpeg', '.mpg', '.wmv', '.flv', '.ogv', '.ts'];
-const maxVideoBytes = 2 * 1024 * 1024 - 1; // videos must be under 2 MB
+const maxVideoBytes = 6 * 1024 * 1024; // videos can be up to 6 MB
 const productVideoUpload = multer({
   storage: multer.diskStorage({
     destination: (_request, _file, callback) => {
@@ -1174,8 +1181,8 @@ app.get('/api/services', (_request, response) => {
 app.post('/api/uploads/portfolio', (request: Request, response: Response, next: NextFunction) => {
   const user = authenticatedUser(request);
   if (!user || !['provider', 'seller', 'dispatch'].includes(user.role)) return response.status(403).json({ error: 'Sign in as a seller, service provider or dispatch rider to upload photos.' });
-  imageUpload.array('images', 6)(request, response, async (error: any) => {
-    if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Each photo must be 5 MB or smaller.' : error.message || 'The photos could not be uploaded.' });
+  imageUpload.array('images', 10)(request, response, async (error: any) => {
+    if (error) return response.status(400).json({ error: uploadProblem(error, 'A photo', 'Use up to 10 photos, each 5 MB or smaller.') });
     const files = (request.files || []) as Express.Multer.File[];
     if (files.some((file) => !looksLikeImage(file.path))) {
       files.forEach((file) => fs.unlink(file.path, () => {}));
@@ -1190,7 +1197,7 @@ app.post(['/api/uploads/short-video', '/api/uploads/product-video'], (request: R
   const user = authenticatedUser(request);
   if (!user || !['seller', 'provider'].includes(user.role)) return response.status(403).json({ error: 'Sign in as a vendor or service provider to upload short videos.' });
   productVideoUpload.single('video')(request, response, async (error: any) => {
-    if (error) return response.status(400).json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'Video must be under 2 MB.' : error.message || 'The video could not be uploaded.' });
+    if (error) return response.status(400).json({ error: uploadProblem(error, 'The video', 'Use one video of 6 MB or smaller.') });
     if (!request.file) return response.status(400).json({ error: 'Choose a short video.' });
     if (!looksLikeVideo(request.file.path)) {
       fs.unlink(request.file.path, () => {});
@@ -1311,7 +1318,7 @@ app.post('/api/provider/listings', (request: Request, response: Response) => {
   if (typeof title !== 'string' || title.trim().length < 3 || title.length > 100) fail(400, 'Enter a service title.');
   if (typeof description !== 'string' || description.trim().length < 10 || description.length > 1500) fail(400, 'Describe your service in at least 10 characters.');
   if (price !== undefined && price !== null && price !== '') fail(400, 'Service providers do not set a price. Customers negotiate it with you in chat.');
-  if (!Array.isArray(portfolio) || portfolio.length < 1 || portfolio.length > 6 || portfolio.some((image) => !isMediaRef(image, 'image'))) fail(400, 'Upload 1 to 6 work photos first.');
+  if (!Array.isArray(portfolio) || portfolio.length < 1 || portfolio.length > 10 || portfolio.some((image) => !isMediaRef(image, 'image'))) fail(400, 'Upload 1 to 10 work photos first.');
   if (video !== undefined && (!isMediaRef(video, 'video') || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
   const listing = { id: randomBytes(12).toString('hex'), userId: user.id, provider: user.name, businessName: user.businessName, niche, title: title.trim(), description: description.trim(), price: null, negotiable: true, neighbourhood: 'Uyo, Akwa Ibom', portfolio, video, videoDuration: video === undefined ? undefined : Number(videoDuration), createdAt: new Date().toISOString() };
@@ -1385,7 +1392,7 @@ app.post('/api/seller/products', (request: Request, response: Response) => {
   if (typeof description !== 'string' || description.trim().length < 5) fail(400, 'Add a short product description.');
   if (!Number.isInteger(Number(price)) || Number(price) < 100 || Number(price) > 100000000) fail(400, 'Enter a valid price in Naira.');
   const productImages: string[] = images !== undefined ? images : image !== undefined ? [image] : [];
-  if (!Array.isArray(productImages) || productImages.length < 1 || productImages.length > 3 || productImages.some((item) => !isMediaRef(item, 'image'))) fail(400, 'Upload 1 to 3 product photos first.');
+  if (!Array.isArray(productImages) || productImages.length < 1 || productImages.length > 10 || productImages.some((item) => !isMediaRef(item, 'image'))) fail(400, 'Upload 1 to 10 product photos first.');
   if (video !== undefined && (!isMediaRef(video, 'video') || !Number.isFinite(Number(videoDuration)) || Number(videoDuration) <= 0 || Number(videoDuration) > 30)) fail(400, 'Upload a short video of 30 seconds or less.');
   if (video === undefined && videoDuration !== undefined) fail(400, 'Upload a short video before setting its duration.');
   const cleaned = cleanSpecs(category, request.body?.specs);
@@ -1562,7 +1569,7 @@ app.patch('/api/dispatch/jobs/:reference', (request: Request, response: Response
 
 app.post('/api/auth/register', asyncRoute(async (request: Request, response: Response) => {
   const parsed = registerSchema.safeParse(request.body || {});
-  if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
+  if (!parsed.success) fail(400, describeIssues(parsed.error));
   const { name, username, email, password, role, businessName, niche, ref } = parsed.data;
   if (role === 'dispatch' && !dispatchSignInEnabled()) fail(403, 'Dispatch rider sign-up is paused. Unishop handles deliveries for now.');
   const sanitizedName = sanitizeText(name, '');
@@ -1632,7 +1639,7 @@ app.post('/api/auth/verify-otp', asyncRoute(async (request: Request, response: R
 
 app.post('/api/auth/login', asyncRoute(async (request: Request, response: Response) => {
   const parsed = loginSchema.safeParse(request.body || {});
-  if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
+  if (!parsed.success) fail(400, describeIssues(parsed.error));
   const { username, password } = parsed.data;
   const normalizedUsername = sanitizeText(username, '').toLowerCase();
   const user = state.users.find((item) => (item.username || legacyUsername(item)).toLowerCase() === normalizedUsername);
@@ -1692,7 +1699,7 @@ app.post('/api/profile/nin', asyncRoute(async (request: Request, response: Respo
   if (!requiresNin(user.role)) fail(403, 'NIN verification is only needed for sellers and service providers.');
   if (user.ninStatus === 'verified') fail(409, 'Your NIN is already verified.');
   const parsed = z.object({ nin: z.string().trim().regex(/^\d{11}$/, 'Enter your 11-digit NIN.') }).safeParse(request.body || {});
-  if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
+  if (!parsed.success) fail(400, describeIssues(parsed.error));
   const { nin } = parsed.data;
   const taken = state.users.some((member) => member.id !== user.id && member.ninEncrypted && member.ninStatus !== 'failed' && (() => { try { return decryptNin(member.ninEncrypted as string) === nin; } catch { return false; } })());
   if (taken) fail(409, 'This NIN is already linked to another account.');
@@ -1733,7 +1740,7 @@ app.patch('/api/profile', (request: Request, response: Response) => {
     teamImages: z.array(z.string().refine((v) => isMediaRef(v, 'image'))).max(6).optional()
   });
   const parsed = profileSchema.safeParse(request.body || {});
-  if (!parsed.success) fail(400, parsed.error.issues.map((issue) => issue.message).join(', '));
+  if (!parsed.success) fail(400, describeIssues(parsed.error));
   user.name = sanitizeText(parsed.data.name, '');
   user.businessName = sanitizeText(parsed.data.businessName, '');
   user.position = sanitizeText(parsed.data.position, '');
@@ -2123,11 +2130,12 @@ app.get('/api/orders/:reference', (request: Request, response: Response) => {
 });
 
 app.use('/api', (request: Request, _response: Response, next: NextFunction) => next(Object.assign(new Error(`API route not found: ${request.method} ${request.path}`), { status: 404 })));
-app.use((error: ApiError, _request: Request, response: Response, _next: NextFunction) => {
+app.use((error: ApiError, request: Request, response: Response, _next: NextFunction) => {
   const status = error.status || 500;
-  if (status >= 500) console.error('Request failed:', error.message);
-  const publicMessage = status === 503 ? error.message : status >= 500 ? 'The request could not be completed. Please try again.' : error.message;
-  response.status(status).json({ error: publicMessage });
+  const where = `${request.method} ${request.path}`;
+  if (status >= 500) console.error(`Request failed: ${where}:`, error.message);
+  const publicMessage = status === 503 ? error.message : status >= 500 ? `The server hit an unexpected problem while handling ${where}. This is a Unishop server fault, not something in your details. The cause is in the server log under "Request failed: ${where}".` : error.message;
+  response.status(status).json({ error: publicMessage, where, status });
 });
 
 const port = Number(process.env.PORT) || 3000;
