@@ -1,6 +1,6 @@
 const tokenKey = 'unishop-admin-token';
 const pageSize = 50;
-const labels = { overview: 'Marketplace overview', users: 'Accounts', orders: 'Orders', bookings: 'Bookings', listings: 'Listings', payouts: 'Payouts', audit: 'Admin activity', chats: 'Chats' };
+const labels = { overview: 'Marketplace overview', users: 'Accounts', orders: 'Orders', bookings: 'Bookings', listings: 'Listings', payouts: 'Payouts', audit: 'Admin activity', chats: 'Chats', mail: 'Send mail' };
 const descriptions = {
   users: 'Review customer, seller, service provider and dispatch accounts. Suspensions delist sellers/providers and block their access.',
   orders: 'Marketplace order ledger, including customer, items, payment and delivery details.',
@@ -186,6 +186,7 @@ async function navigate(view) {
   document.querySelectorAll('.nav-link').forEach((button) => button.classList.toggle('active', button.dataset.view === view));
   try {
     if (view === 'overview') await loadOverview();
+    else if (view === 'mail') await loadMail();
     else await loadRecords();
   } catch (error) {
     document.querySelector('#main-content').innerHTML = `<div class="empty-note">${escapeHtml(error.message)}</div>`;
@@ -354,3 +355,73 @@ else showLogin();
 setInterval(() => {
   if (token() && currentView === 'overview') loadOverview().catch(() => {});
 }, 60000);
+
+
+// ---- Send mail: write a message, tick recipients, send ----
+let mailRecipients = [];
+const mailRoleNames = { customer: 'Customers', seller: 'Vendors', provider: 'Service providers', dispatch: 'Delivery team' };
+const mailSelected = new Set();
+
+function mailVisible() {
+  const role = document.querySelector('#mail-role')?.value || 'all';
+  const term = (document.querySelector('#mail-search')?.value || '').trim().toLowerCase();
+  return mailRecipients.filter((person) => (role === 'all' || person.role === role) && (!term || `${person.name} ${person.email}`.toLowerCase().includes(term)));
+}
+
+function renderMailList() {
+  const visible = mailVisible();
+  document.querySelector('#mail-list').innerHTML = visible.map((person) => `<label class="mail-person"><input type="checkbox" data-mail-id="${escapeHtml(person.id)}" ${mailSelected.has(person.id) ? 'checked' : ''}><span><strong>${escapeHtml(person.name)}</strong><small>${escapeHtml(person.email)} · ${escapeHtml(mailRoleNames[person.role] || person.role)}${person.suspended ? ' · suspended' : ''}</small></span></label>`).join('') || '<div class="empty-state">No accounts match.</div>';
+  document.querySelector('#mail-count').textContent = `${mailSelected.size} selected`;
+}
+
+async function loadMail() {
+  const data = await api('/api/admin/mail/recipients');
+  mailRecipients = data.recipients;
+  mailSelected.clear();
+  const roleOptions = ['all', 'customer', 'seller', 'provider', 'dispatch'].map((role) => `<option value="${role}">${role === 'all' ? 'Everyone' : mailRoleNames[role]}</option>`).join('');
+  document.querySelector('#main-content').innerHTML = `
+    <header class="section-heading"><div><h2>Send mail</h2><p>Write a message, tick the people who should get it, and send. Each person gets their own email.</p></div></header>
+    ${data.mailConfigured ? '' : '<div class="empty-note">Email is not set up on this deployment, so nothing can be sent yet.</div>'}
+    <section class="panel"><div class="panel-content mail-grid">
+      <form id="mail-form" class="mail-form">
+        <label for="mail-subject">Subject</label><input id="mail-subject" maxlength="150" required placeholder="What is this about?">
+        <label for="mail-message">Message</label><textarea id="mail-message" rows="10" maxlength="5000" required placeholder="Type your message here"></textarea>
+        <label for="mail-extra">Other email addresses (optional, separated by commas)</label><input id="mail-extra" placeholder="name@example.com, other@example.com">
+        <div class="dialog-actions"><span id="mail-count" class="record-count">0 selected</span><button id="mail-send" class="button button-primary" type="submit">Send mail</button></div>
+        <p id="mail-result" class="form-error" role="status" hidden></p>
+      </form>
+      <div class="mail-pick">
+        <div class="records-toolbar"><select id="mail-role" aria-label="Filter by account type">${roleOptions}</select><input id="mail-search" class="search-box" type="search" placeholder="Search name or email" aria-label="Search recipients"></div>
+        <div class="mail-actions"><button type="button" class="button button-secondary" id="mail-all">Tick all shown</button><button type="button" class="button button-secondary" id="mail-none">Clear</button></div>
+        <div id="mail-list" class="mail-list"></div>
+      </div>
+    </div></section>`;
+  renderMailList();
+  document.querySelector('#mail-role').addEventListener('change', renderMailList);
+  document.querySelector('#mail-search').addEventListener('input', renderMailList);
+  document.querySelector('#mail-all').addEventListener('click', () => { mailVisible().forEach((person) => mailSelected.add(person.id)); renderMailList(); });
+  document.querySelector('#mail-none').addEventListener('click', () => { mailSelected.clear(); renderMailList(); });
+  document.querySelector('#mail-list').addEventListener('change', (event) => {
+    const box = event.target.closest('[data-mail-id]');
+    if (!box) return;
+    if (box.checked) mailSelected.add(box.dataset.mailId); else mailSelected.delete(box.dataset.mailId);
+    document.querySelector('#mail-count').textContent = `${mailSelected.size} selected`;
+  });
+  document.querySelector('#mail-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const extraEmails = document.querySelector('#mail-extra').value.split(/[\s,;]+/).filter(Boolean);
+    const count = mailSelected.size + extraEmails.length;
+    if (!count) { notify('Tick at least one recipient.'); return; }
+    if (!confirm(`Send this email to ${count} recipient${count === 1 ? '' : 's'}?`)) return;
+    const button = document.querySelector('#mail-send');
+    const result = document.querySelector('#mail-result');
+    button.disabled = true; button.textContent = 'Sending…'; result.hidden = true;
+    try {
+      const outcome = await api('/api/admin/mail', { method: 'POST', body: JSON.stringify({ subject: document.querySelector('#mail-subject').value, message: document.querySelector('#mail-message').value, userIds: [...mailSelected], extraEmails }) });
+      result.hidden = false;
+      result.textContent = outcome.failed.length ? `Sent to ${outcome.sent} of ${outcome.total}. Failed: ${outcome.failed.join(', ')}` : `Sent to ${outcome.sent} recipient${outcome.sent === 1 ? '' : 's'}.`;
+      notify(outcome.failed.length ? 'Some emails failed.' : 'Mail sent.');
+    } catch (error) { result.hidden = false; result.textContent = error.message; }
+    button.disabled = false; button.textContent = 'Send mail';
+  });
+}
