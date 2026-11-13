@@ -66,6 +66,17 @@ const server = app.listen(0, async () => {
     const toAll = await call('POST', '/api/admin/mail', { subject: 'Everyone', message: 'Hello all', audience: 'all' }, token);
     assert.equal(toAll.status, 200);
     assert.ok(sent.some((m) => m.to[0] === ids[0].email) && sent.some((m) => m.to[0] === ids[1].email), 'everyone');
+    assert.equal((await call('GET', '/api/admin/mail/sent')).status, 401, 'sent list needs admin');
+    const history = await call('GET', '/api/admin/mail/sent', null, token);
+    assert.equal(history.status, 200);
+    assert.equal(history.data.mails.length, 3, 'three batches sent');
+    assert.equal(history.data.mails[0].subject, 'Everyone', 'newest first');
+    const holiday = history.data.mails.find((item) => item.subject === 'Holiday notice');
+    assert.equal(holiday.sent, 3);
+    assert.deepEqual(holiday.failed, ['bad@example.com']);
+    assert.ok(holiday.message.includes('Second paragraph') && holiday.recipients.includes(ids[0].email));
+    assert.equal(history.data.mails.find((item) => item.subject === 'Sellers only').audience, 'seller');
+    assert.ok(history.data.mails.every((item) => !('passwordHash' in item)));
     console.log('admin mail smoke test passed');
     server.close(); process.exit(0);
   } catch (error) { console.error(error); server.close(); process.exit(1); }

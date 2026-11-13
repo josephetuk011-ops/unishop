@@ -1,6 +1,6 @@
 const tokenKey = 'unishop-admin-token';
 const pageSize = 50;
-const labels = { overview: 'Marketplace overview', users: 'Accounts', orders: 'Orders', bookings: 'Bookings', listings: 'Listings', payouts: 'Payouts', audit: 'Admin activity', chats: 'Chats', mail: 'Send mail' };
+const labels = { overview: 'Marketplace overview', users: 'Accounts', orders: 'Orders', bookings: 'Bookings', listings: 'Listings', payouts: 'Payouts', audit: 'Admin activity', chats: 'Chats', mail: 'Send mail', sent: 'Sent mail' };
 const descriptions = {
   users: 'Review customer, seller, service provider and dispatch accounts. Suspensions delist sellers/providers and block their access.',
   orders: 'Marketplace order ledger, including customer, items, payment and delivery details.',
@@ -187,6 +187,7 @@ async function navigate(view) {
   try {
     if (view === 'overview') await loadOverview();
     else if (view === 'mail') await loadMail();
+    else if (view === 'sent') await loadSentMail();
     else await loadRecords();
   } catch (error) {
     document.querySelector('#main-content').innerHTML = `<div class="empty-note">${escapeHtml(error.message)}</div>`;
@@ -429,4 +430,21 @@ async function loadMail() {
     } catch (error) { result.hidden = false; result.textContent = error.message; }
     button.disabled = false; button.textContent = 'Send mail';
   });
+}
+
+const audienceNames = { all: 'Everyone', customer: 'Customers', seller: 'Vendors', provider: 'Service providers', dispatch: 'Delivery team', selected: 'Chosen people' };
+async function loadSentMail() {
+  const data = await api('/api/admin/mail/sent');
+  const rows = data.mails.map((mail) => {
+    const failedCount = mail.failedCount ?? (mail.failed || []).length;
+    const status = failedCount ? `${mail.sent} of ${mail.total} delivered, ${failedCount} failed` : `Sent to ${mail.sent}`;
+    const who = mail.detailsKept ? `${escapeHtml(audienceNames[mail.audience] || 'Chosen people')} · ${mail.total} address${mail.total === 1 ? '' : 'es'}` : `${mail.total} address${mail.total === 1 ? '' : 'es'}`;
+    const body = mail.detailsKept
+      ? `<details class="sent-mail"><summary>Read message and recipients</summary><pre class="sent-mail-body">${escapeHtml(mail.message)}</pre><p class="sent-mail-to"><strong>To:</strong> ${escapeHtml(mail.recipients.join(', '))}</p>${failedCount ? `<p class="sent-mail-to"><strong>Failed:</strong> ${escapeHtml(mail.failed.join(', '))}</p>` : ''}</details>`
+      : '<span class="sent-mail-old">Sent before the message text was kept, so only the subject and counts are available.</span>';
+    return `<tr><td>${escapeHtml(formatDate(mail.createdAt))}</td><td><strong>${escapeHtml(mail.subject)}</strong><br>${body}</td><td>${who}</td><td>${escapeHtml(status)}</td></tr>`;
+  }).join('');
+  document.querySelector('#main-content').innerHTML = `
+    <header class="section-heading"><div><h2>Sent mail</h2><p>Every message sent from this dashboard, newest first.</p></div></header>
+    <section class="panel"><div class="panel-content"><div class="table-scroll"><table class="data-table"><thead><tr><th>Sent</th><th>Subject</th><th>To</th><th>Result</th></tr></thead><tbody>${rows || '<tr><td colspan="4"><div class="empty-state">No mail has been sent yet.</div></td></tr>'}</tbody></table></div></div></section>`;
 }
