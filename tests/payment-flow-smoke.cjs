@@ -60,8 +60,8 @@ const server = app.listen(0, async () => {
 
   try {
     const niches = await send('GET', '/api/services/niches');
-    assert.equal(niches.data.length, 21);
-    assert.ok(niches.data.some((niche) => niche.name === 'Graphic design') && niches.data.some((niche) => niche.name === 'Dry cleaning'));
+    assert.equal(niches.data.length, 190);
+    assert.ok(niches.data.some((niche) => niche.name === 'Graphic designers') && niches.data.some((niche) => niche.name === 'Dry cleaning'));
     const invalidProvider = await send('POST', '/api/auth/register', {
       name: 'Invalid Niche', username: 'invalidniche', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'provider', businessName: 'Bad listing', niche: 'Car washing'
     });

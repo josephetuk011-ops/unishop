@@ -153,8 +153,9 @@ CANCELLATION
 If you cancel less than 3 hours before, the deposit is lost. If I cancel, I refund your deposit double.`
     }
   };
+  const templateAliases = { 'Barbers': 'Barbing', 'Hair stylists and hairdressers': 'Hair dressing', 'Photographers': 'Photographer', 'Graphic designers': 'Graphic design', 'Graphic artists': 'Graphic design', 'Laundry and dry-cleaning specialists': 'Laundry and ironing' };
   window.UnishopServiceTemplates = {
-    get: (niche) => templates[niche] || null,
+    get: (niche) => templates[niche] || templates[templateAliases[niche]] || null,
     hasPlaceholders: (text) => /\[[^\]\n]{1,80}\]/.test(String(text || ''))
   };
 })();

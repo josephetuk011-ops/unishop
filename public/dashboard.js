@@ -1,7 +1,16 @@
 let token = localStorage.getItem('unishop-token') || '';
 const workspace = document.querySelector('#workspace-content');
 const roleLabels = { provider: 'Service provider', seller: 'Vendors and Brands', dispatch: 'Dispatch rider', customer: 'Customer', admin: 'Admin' };
-const roleNiches = ['Barbing', 'Cleaning', 'Cooking', 'Hair dressing', 'Decorating', 'Grass clearing', 'Mechanic', 'Electrician', 'Plumber', 'Photographer', 'Makeup', 'Fashion designing', 'Manicure and pedicure', 'Therapist'];
+let serviceGroups = [];
+function nicheOptionsHtml(selected) {
+  if (!serviceGroups.length) return selected ? `<option value="${escapeHtml(selected)}" selected>${escapeHtml(selected)}</option>` : '';
+  return serviceGroups.map((group) => `<optgroup label="${escapeHtml(group.name)}">${group.services.map((niche) => `<option value="${escapeHtml(niche)}" ${selected === niche ? 'selected' : ''}>${escapeHtml(niche)}</option>`).join('')}</optgroup>`).join('');
+}
+fetch('/api/service-categories').then((response) => response.ok ? response.json() : null).then((data) => {
+  if (!data?.groups) return;
+  serviceGroups = data.groups;
+  document.querySelectorAll('#service-form select[name="niche"]').forEach((select) => { const current = select.value; select.innerHTML = nicheOptionsHtml(current); select.value = current; select.dispatchEvent(new Event('change', { bubbles: true })); });
+}).catch(() => {});
 let dashboardData;
 let selectedView = 'overview';
 let toastTimer;
@@ -173,7 +182,7 @@ function providerDashboard() {
   return `${header(`Welcome, ${user.name.split(' ')[0]}`, `Your niche: ${user.niche || 'Choose a service niche to get started.'}`, '<button class="primary-button" data-open-form="service">+ Add service</button>')}<div class="metric-grid">${metric('Published services', metrics.listingCount)}${metric('Booking requests', metrics.bookingCount)}${metric('Average rating', metrics.rating ? `${metrics.rating.toFixed(1)} / 5` : '—', `${reviews.length} customer reviews`)}${metric('Verified paid earnings', formatMoney(metrics.grossEarnings), 'Before commission and provider dispatch contribution')}</div><div class="dashboard-grid">${panel('Recent bookings', table(['Request', 'Preferred time', 'Status', 'Price', 'Actions'], bookingRows(bookings.slice(-5)), 'No bookings yet. Add your work to be discovered.'))}${reviewsPanel(reviews.slice(-5))}</div><div class="panel-gap">${panel('Your work', serviceCards(listings.slice(0, 3)))}</div>${moneyNote()}${payoutPanel()}${serviceForm()}`;
 }
 function serviceForm() {
-  const options = roleNiches.map((niche) => `<option value="${escapeHtml(niche)}" ${dashboardData.user.niche === niche ? 'selected' : ''}>${escapeHtml(niche)}</option>`).join('');
+  const options = nicheOptionsHtml(dashboardData.user.niche);
   return `<section class="panel editor-panel" id="service-editor" hidden><header class="panel-heading"><h3>Publish service and work photos</h3></header><div class="panel-body"><form class="form-grid" id="service-form"><label class="form-field">Choose your niche<select name="niche" required>${options}</select></label><p class="form-help full">You do not set a price. Customers tap Proceed to negotiation and agree the price with you in chat.</p><div class="tpl-slot full" data-tpl-slot></div><label class="form-field full">Service title<input name="title" required minlength="3" maxlength="100" placeholder="e.g. Home hair styling and braids"></label><label class="form-field full">Description<textarea name="description" required minlength="10" maxlength="1500" placeholder="Describe the service, area covered and what customers can expect."></textarea></label><label class="form-field full">Photos of your work<input name="images" type="file" accept="image/jpeg,image/png,image/webp" multiple required><span class="form-help">Upload up to 10 JPG, PNG or WebP files, 5 MB each. Choose only your own work.</span></label><label class="form-field full">Short service video <span class="form-help">Optional · Any video · up to 6 MB · maximum 30 seconds.</span><input name="video" type="file" accept="video/*"></label><div class="upload-preview full" id="service-preview"></div><div class="form-actions"><button class="primary-button" type="submit">Publish service</button><button class="secondary-button" type="button" data-close-form>Cancel</button></div></form></div></section>`;
 }
 function sellerForm() {

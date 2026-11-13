@@ -2,15 +2,23 @@ const products = [];
 
 const vendorProducts = [];
 const providers = [];
-const serviceNiches = [
-  ['Barbing', 'photo-1503951914875-452162b0f3f1'], ['Cleaning', 'photo-1581578731548-c64695cc6952'], ['Cooking', 'photo-1556911220-bff31c812dba'],
-  ['Hair dressing', 'photo-1560066984-138dadb4c035'], ['Decorating', 'photo-1616486338812-3dadae4b4ace'], ['Grass clearing', 'photo-1585320806297-9794b3e4eeae'],
-  ['Mechanic', 'photo-1486262715619-67b85e0b08d3'], ['Electrician', 'photo-1621905251189-08b45d6a269e'], ['Plumber', 'photo-1607472586893-edb57bdc0e39'],
-  ['Photographer', 'photo-1542038784456-1ea8e935640e'], ['Makeup', 'photo-1522335789203-aabd1fc54bc9'], ['Fashion designing', 'photo-1558618666-fcd25c85cd64'],
-  ['Manicure and pedicure', 'photo-1604654894610-df63bc536371'], ['Therapist', 'photo-1544161515-4ab6ce6db874'],
-  ['Graphic design', 'photo-1626785774573-4b799315345d'], ['Dry cleaning', 'photo-1517677208171-0bc6725a3e60'], ['Laundry and ironing', 'photo-1489274495757-95c7c837b101'],
-  ['Phone repair', 'photo-1581092918056-0c4c3acd3789'], ['Event planning', 'photo-1511578314322-379afb476865'], ['Web and app design', 'photo-1531403009284-440f080d1e12'], ['Tutoring', 'photo-1606761568499-6d2451b23c66']
-];
+// Service groups and their services come from /api/service-categories (src/serviceCategories.ts).
+let serviceGroups = [];
+const serviceNiches = [];
+let activeServiceGroup = 'All';
+const groupImages = {
+  'Home Services': 'photo-1581578731548-c64695cc6952', 'Beauty and Personal Care': 'photo-1560066984-138dadb4c035', 'Transportation and Mobility': 'photo-1486262715619-67b85e0b08d3',
+  'Events and Entertainment': 'photo-1511578314322-379afb476865', 'Food and Catering': 'photo-1556911220-bff31c812dba', 'Education and Training': 'photo-1606761568499-6d2451b23c66',
+  'Technology and Digital Services': 'photo-1531403009284-440f080d1e12', 'Fashion and Tailoring': 'photo-1558618666-fcd25c85cd64', 'Automotive Services': 'photo-1486262715619-67b85e0b08d3',
+  'Construction and Engineering': 'photo-1621905251189-08b45d6a269e', 'Creative and Media Services': 'photo-1542038784456-1ea8e935640e', 'Agriculture and Outdoor Services': 'photo-1585320806297-9794b3e4eeae'
+};
+function setServiceGroups(groups) {
+  serviceGroups = groups;
+  const seen = new Set();
+  serviceNiches.length = 0;
+  groups.forEach((group) => group.services.forEach((name) => { if (!seen.has(name)) { seen.add(name); serviceNiches.push([name, groupImages[group.name] || '/assets/unishop-logo.jpeg']); } }));
+}
+const groupsOfNiche = (niche) => serviceGroups.filter((group) => group.services.includes(niche)).map((group) => group.name);
 let activeNiche = 'All';
 let marketMode = 'all';
 
@@ -24,15 +32,14 @@ let selectedSub = 'All';
 // Top-level groups come from the server (/api/product-categories). Products map to a group by category, services by niche.
 let categoryGroups = [];
 const legacyGroups = { Home: 'Home and living', Fashion: 'Fashion and accessories', Beauty: 'Beauty and health', Tech: 'Phones and electronics', Food: 'Food and drinks' };
-const nicheGroups = {
-  'Barbing': 'Beauty and health', 'Hair dressing': 'Beauty and health', 'Makeup': 'Beauty and health', 'Manicure and pedicure': 'Beauty and health', 'Therapist': 'Beauty and health',
-  'Fashion designing': 'Fashion and accessories', 'Laundry and ironing': 'Fashion and accessories', 'Dry cleaning': 'Fashion and accessories',
-  'Phone repair': 'Phones and electronics', 'Web and app design': 'Phones and electronics', 'Graphic design': 'Phones and electronics',
-  'Cooking': 'Food and drinks', 'Cleaning': 'Home and living', 'Decorating': 'Home and living', 'Grass clearing': 'Home and living', 'Electrician': 'Building and farming', 'Plumber': 'Building and farming',
-  'Mechanic': 'Vehicles', 'Event planning': 'Arts, gifts and events', 'Photographer': 'Arts, gifts and events', 'Tutoring': 'Baby, kids and school'
+const serviceToProductGroup = {
+  'Home Services': 'Home and living', 'Beauty and Personal Care': 'Beauty and health', 'Health and Wellness': 'Beauty and health', 'Fashion and Tailoring': 'Fashion and accessories',
+  'Technology and Digital Services': 'Phones and electronics', 'Food and Catering': 'Food and drinks', 'Automotive Services': 'Vehicles', 'Transportation and Mobility': 'Vehicles',
+  'Construction and Engineering': 'Building and farming', 'Agriculture and Outdoor Services': 'Building and farming', 'Events and Entertainment': 'Arts, gifts and events',
+  'Creative and Media Services': 'Arts, gifts and events', 'Education and Training': 'Baby, kids and school', 'Childcare and Domestic Assistance': 'Baby, kids and school', 'Pet Care Services': 'Pets and other'
 };
 const groupOfProduct = (product) => legacyGroups[product.category] || categoryGroups.find((entry) => entry.items.includes(product.category))?.group || 'Pets and other';
-const groupOfService = (provider) => nicheGroups[provider.niche || provider.category || provider.trade] || '';
+const groupOfService = (provider) => { const niche = provider.niche || provider.category || provider.trade; const hit = groupsOfNiche(niche).map((name) => serviceToProductGroup[name]).filter(Boolean); return hit.includes(selectedGroup()) ? selectedGroup() : (hit[0] || ''); };
 const selectedGroup = () => legacyGroups[selectedCategory] || selectedCategory;
 let searchTerm = '';
 let selectedAuthRole = 'customer';
@@ -218,7 +225,7 @@ function renderProducts() {
       <div class="product-details"><div class="product-vendor">${product.userId ? `<a class="vendor-link" href="/vendor.html?id=${encodeURIComponent(product.userId)}">${product.seller}</a>` : product.seller}</div><h3 class="product-name"><button class="product-title-open" data-product-detail="${product.id}">${product.name}</button></h3><div class="product-bottom"><span class="product-price">${formatPrice(product.price)}</span>${product.rating ? `<span class="product-rating"><b>★</b> ${Number(product.rating).toFixed(1)}/5 <span>(${product.reviews || 0})</span></span>` : '<span class="product-rating">★ Not rated yet</span>'}${stockBadge(product)}<button class="add-button" data-add="${product.id}" aria-label="Add ${product.name} to bag"${product.stock === 0 ? ' disabled' : ''}>+</button></div></div>
     </article>`);
   const services = providers.filter((provider) => {
-    const matchesNiche = activeNiche === 'All' || provider.niche === activeNiche || provider.category === activeNiche || provider.trade === activeNiche;
+    const matchesNiche = (activeNiche === 'All' || provider.niche === activeNiche || provider.category === activeNiche || provider.trade === activeNiche) && (activeServiceGroup === 'All' || groupsOfNiche(provider.niche || provider.category || provider.trade).includes(activeServiceGroup));
     const matchesSearch = `${provider.provider || provider.name} ${provider.title || provider.trade} ${provider.niche || ''} ${provider.neighbourhood || ''}`.toLowerCase().includes(searchTerm);
     const matchesGroup = selectedCategory === 'All' || (selectedSub === 'All' && groupOfService(provider) === selectedGroup());
     return matchesNiche && matchesSearch && matchesGroup;
@@ -278,7 +285,7 @@ function renderProducts() {
   const groupedServices = withHeadings(demoServices, demoServices.map((provider) => serviceMarkupByItem.get(provider)), (key) => key, (provider) => provider.niche || provider.category || provider.trade, 'services');
   const listings = [...goodsMarkup, ...serviceMarkup];
   document.querySelector('.category-pill[data-category="All"] span').textContent = String(products.length + (['goods', 'brands'].includes(marketMode) ? 0 : providers.length));
-  productGrid.innerHTML = [...groupedNew, ...groupedGoods, ...groupedServices].join('') || `<p class="no-results">${marketMode === 'services' && activeNiche !== 'All' ? `No ${activeNiche.toLowerCase()} listings found yet.` : 'No listings match that search. Try another category.'}</p>`;
+  productGrid.innerHTML = [...groupedNew, ...groupedGoods, ...groupedServices].join('') || `<p class="no-results">${marketMode === 'services' && (activeNiche !== 'All' || activeServiceGroup !== 'All') ? `No ${(activeNiche !== 'All' ? activeNiche : activeServiceGroup).toLowerCase()} listings found yet.` : 'No listings match that search. Try another category.'}</p>`;
   const nicheGrid = document.querySelector('#marketplace-niches');
   nicheGrid.innerHTML = serviceNiches.map(([name, image]) => `<button class="service-niche-card ${activeNiche === name ? 'selected' : ''}" data-service-niche="${name}"><img src="${imageUrl(image, 640)}" alt="${name} service in Uyo" loading="lazy"><span>${name}</span><b>Explore ↗</b></button>`).join('');
   nicheGrid.hidden = true;
@@ -286,9 +293,10 @@ function renderProducts() {
   if (serviceBar) {
     serviceBar.hidden = marketMode !== 'services';
     if (marketMode === 'services') {
-      serviceBar.innerHTML = ['All', ...serviceNiches.map(([name]) => name)].map((name) => `<button type="button" role="tab" class="service-chip ${activeNiche === name ? 'selected' : ''}" data-service-chip="${name}" aria-selected="${activeNiche === name}">${name === 'All' ? 'All services' : name}</button>`).join('');
-      const picked = serviceBar.querySelector('.selected');
-      if (picked && !serviceBar.dataset.scrolled) { serviceBar.scrollLeft = Math.max(0, picked.offsetLeft - 16); }
+      const chip = (attr, name, label, selected) => `<button type="button" role="tab" class="service-chip ${selected ? 'selected' : ''}" ${attr}="${escapeShortText(name)}" aria-selected="${selected}">${escapeShortText(label)}</button>`;
+      const group = serviceGroups.find((entry) => entry.name === activeServiceGroup);
+      serviceBar.innerHTML = `<div class="service-bar-row">${chip('data-service-group', 'All', 'All services', activeServiceGroup === 'All')}${serviceGroups.map((entry) => chip('data-service-group', entry.name, entry.name, activeServiceGroup === entry.name)).join('')}</div>${group ? `<div class="service-bar-row service-bar-subs">${chip('data-service-chip', 'All', `All ${group.name}`, activeNiche === 'All')}${group.services.map((name) => chip('data-service-chip', name, name, activeNiche === name)).join('')}</div>` : ''}`;
+      serviceBar.querySelectorAll('.service-bar-row').forEach((row) => { const picked = row.querySelector('.selected'); if (picked) row.scrollLeft = Math.max(0, picked.offsetLeft - 16); });
     } else delete serviceBar.dataset.scrolled;
   }
   document.querySelector('.category-pills').hidden = marketMode === 'services';
@@ -296,6 +304,11 @@ function renderProducts() {
 
 function renderProviders(category = 'All') {
   activeNiche = category;
+  renderProducts();
+}
+function selectServiceGroup(group) {
+  activeServiceGroup = group;
+  activeNiche = 'All';
   renderProducts();
 }
 
@@ -539,6 +552,9 @@ function updateAuthForm() {
   document.querySelector('.auth-intro').textContent = registering ? `${authRoleNames[selectedAuthRole]} account · Uyo, Akwa Ibom` : 'Sign in with your username and password.';
 }
 
+function fillNicheSelect(select) {
+  select.innerHTML = serviceGroups.map((group) => `<optgroup label="${escapeShortText(group.name)}">${group.services.map((name) => `<option value="${escapeShortText(name)}">${escapeShortText(name)}</option>`).join('')}</optgroup>`).join('');
+}
 function openAuth(role = 'customer', mode = 'login') {
   selectedAuthRole = authRoleNames[role] ? role : 'customer';
   selectedAuthMode = mode;
@@ -548,7 +564,7 @@ function openAuth(role = 'customer', mode = 'login') {
   authPasswordToggle.setAttribute('aria-pressed', 'false');
   authPasswordToggle.setAttribute('aria-label', 'Show password');
   authPasswordToggle.title = 'Show password';
-  authForm.elements.niche.innerHTML = serviceNiches.map(([name]) => `<option value="${name}">${name}</option>`).join('');
+  fillNicheSelect(authForm.elements.niche);
   updateAuthForm();
   authBackdrop.classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -736,6 +752,7 @@ document.querySelector('.category-pills').addEventListener('click', (event) => {
   selectedCategory = pill.dataset.category;
   selectedSub = 'All';
   activeNiche = 'All';
+  activeServiceGroup = 'All';
   searchTerm = '';
   document.querySelector('#search-input').value = '';
   document.querySelectorAll('.category-pill').forEach((item) => item.classList.toggle('selected', item === pill));
@@ -747,6 +764,7 @@ document.querySelectorAll('[data-nav-mode]').forEach((link) => link.addEventList
   marketMode = ['services', 'goods', 'brands'].includes(mode) ? mode : 'all';
   selectedCategory = 'All';
   activeNiche = 'All';
+  activeServiceGroup = 'All';
   searchTerm = '';
   const searchInput = document.querySelector('#search-input');
   searchInput.value = '';
@@ -1061,6 +1079,13 @@ document.addEventListener('keydown', (event) => {
 renderProducts();
 renderProviders();
 renderShorts();
+fetch('/api/service-categories').then((response) => response.ok ? response.json() : null).then((data) => {
+  if (!data?.groups) return;
+  setServiceGroups(data.groups);
+  window.renderServiceMenu?.();
+  renderProducts();
+  renderShorts();
+}).catch(() => {});
 loadShortLikes();
 renderCart();
 renderVisionTicker();
@@ -1168,13 +1193,17 @@ loadReward();
     toggle.setAttribute('aria-expanded', String(open));
   };
   const list = document.querySelector('#menu-niches');
-  list.innerHTML = serviceNiches.map(([name]) => `<button type="button" data-menu-niche="${name}">${name}</button>`).join('');
+  const renderMenuGroups = () => {
+    list.innerHTML = serviceGroups.map((group) => `<details class="menu-group"><summary>${escapeShortText(group.name)}</summary><button type="button" data-menu-group="${escapeShortText(group.name)}">All ${escapeShortText(group.name)}</button>${group.services.map((name) => `<button type="button" data-menu-niche="${escapeShortText(name)}" data-menu-niche-group="${escapeShortText(group.name)}">${escapeShortText(name)}</button>`).join('')}</details>`).join('');
+  };
+  window.renderServiceMenu = renderMenuGroups;
+  renderMenuGroups();
   toggle.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
   backdrop.addEventListener('click', () => setOpen(false));
   document.querySelector('#menu-close').addEventListener('click', () => setOpen(false));
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
   menu.addEventListener('click', (event) => {
-    const niche = event.target.closest('[data-menu-niche]');
+    const niche = event.target.closest('[data-menu-niche], [data-menu-group]');
     if (niche) {
       marketMode = 'services';
       selectedCategory = 'All';
@@ -1185,7 +1214,8 @@ loadReward();
         item.classList.toggle('active', active);
         if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
       });
-      renderProviders(niche.dataset.menuNiche);
+      activeServiceGroup = niche.dataset.menuGroup || niche.dataset.menuNicheGroup || 'All';
+      renderProviders(niche.dataset.menuNiche || 'All');
       document.querySelector('#products').scrollIntoView({ behavior: 'smooth' });
       setOpen(false);
       return;
@@ -1195,12 +1225,12 @@ loadReward();
 })();
 
 document.querySelector('#service-bar')?.addEventListener('click', (event) => {
+  const groupChip = event.target.closest('[data-service-group]');
   const chip = event.target.closest('[data-service-chip]');
-  if (!chip) return;
-  const bar = event.currentTarget;
-  const left = bar.scrollLeft;
-  renderProviders(chip.dataset.serviceChip);
+  if (!groupChip && !chip) return;
+  const rows = [...event.currentTarget.querySelectorAll('.service-bar-row')].map((row) => row.scrollLeft);
+  if (groupChip) selectServiceGroup(groupChip.dataset.serviceGroup); else renderProviders(chip.dataset.serviceChip);
   const fresh = document.querySelector('#service-bar');
-  fresh.scrollLeft = left;
-  fresh.querySelector('.selected')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+  fresh.querySelectorAll('.service-bar-row').forEach((row, i) => { if (!groupChip || i === 0) row.scrollLeft = rows[i] || 0; });
+  fresh.querySelectorAll('.service-bar-row').forEach((row) => row.querySelector('.selected')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }));
 });

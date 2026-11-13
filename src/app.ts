@@ -16,6 +16,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { detectContactInfo } from './chatGuard';
 import { NotificationInput, adminEmail, getVapidPublicKey, sendAdminMessage, sendAdminPhone, sendEmail, sendPush } from './notifications';
+import { serviceCategories, serviceNicheNames, currentNiche } from './serviceCategories';
 
 dotenv.config();
 
@@ -147,20 +148,7 @@ function uploadProblem(error: any, what: string, limits: string): string {
 }
 
 const providers: any[] = [];
-const serviceNiches = [
-  'Barbing', 'Cleaning', 'Cooking', 'Hair dressing', 'Decorating', 'Grass clearing', 'Mechanic',
-  'Electrician', 'Plumber', 'Photographer', 'Makeup', 'Fashion designing', 'Manicure and pedicure', 'Therapist',
-  'Graphic design', 'Dry cleaning', 'Laundry and ironing', 'Phone repair', 'Event planning', 'Web and app design', 'Tutoring'
-];
-const nicheImages: Record<string, string> = {
-  'Barbing': 'photo-1503951914875-452162b0f3f1', 'Cleaning': 'photo-1581578731548-c64695cc6952', 'Cooking': 'photo-1556911220-bff31c812dba',
-  'Hair dressing': 'photo-1560066984-138dadb4c035', 'Decorating': 'photo-1616486338812-3dadae4b4ace', 'Grass clearing': 'photo-1585320806297-9794b3e4eeae',
-  'Mechanic': 'photo-1486262715619-67b85e0b08d3', 'Electrician': 'photo-1621905251189-08b45d6a269e', 'Plumber': 'photo-1607472586893-edb57bdc0e39',
-  'Photographer': 'photo-1542038784456-1ea8e935640e', 'Makeup': 'photo-1522335789203-aabd1fc54bc9', 'Fashion designing': 'photo-1558618666-fcd25c85cd64',
-  'Manicure and pedicure': 'photo-1604654894610-df63bc536371', 'Therapist': 'photo-1544161515-4ab6ce6db874',
-  'Graphic design': 'photo-1626785774573-4b799315345d', 'Dry cleaning': 'photo-1517677208171-0bc6725a3e60', 'Laundry and ironing': 'photo-1489274495757-95c7c837b101',
-  'Phone repair': 'photo-1581092918056-0c4c3acd3789', 'Event planning': 'photo-1511578314322-379afb476865', 'Web and app design': 'photo-1531403009284-440f080d1e12', 'Tutoring': 'photo-1606761568499-6d2451b23c66'
-};
+const serviceNiches = serviceNicheNames;
 const dataPath = process.env.MARKETPLACE_DATA_PATH || path.join(__dirname, '..', '.data', 'marketplace.json');
 const uploadDirectory = process.env.UPLOADS_DIRECTORY || path.join(__dirname, '..', 'public', 'uploads');
 const imageUpload = multer({
@@ -325,6 +313,9 @@ function loadState(): MarketplaceState {
 }
 
 let state = loadState();
+// Move accounts and listings from the old 21 niches to the grouped service names.
+state.users.forEach((member: any) => { if (member.niche) member.niche = currentNiche(member.niche); });
+state.serviceListings.forEach((listing: any) => { if (listing.niche) listing.niche = currentNiche(listing.niche); });
 const ninKey = crypto.createHash('sha256').update(process.env.NIN_ENCRYPTION_KEY || process.env.JWT_SECRET || 'unishop-development-only-change-this-secret').digest();
 function encryptNin(nin: string) {
   const iv = randomBytes(12);
@@ -1275,7 +1266,8 @@ app.get('/api/vendors/:id', (request: Request, response: Response) => {
     reviews: allReviews.slice(0, 10).map((review) => ({ reviewer: String(review.reviewer || 'Customer').split(' ')[0], rating: review.rating, comment: review.comment || '', createdAt: review.createdAt }))
   });
 });
-app.get('/api/services/niches', (_request, response) => response.json(serviceNiches.map((name) => ({ name, image: nicheImages[name] }))));
+app.get('/api/services/niches', (_request, response) => response.json(serviceNiches.map((name) => ({ name }))));
+app.get('/api/service-categories', (_request, response) => response.json({ groups: serviceCategories }));
 app.get('/api/services', (_request, response) => {
   const reviewsByListing: Record<string, any[]> = {};
   state.reviews.forEach((review) => { (reviewsByListing[review.listingId] ||= []).push(review); });
@@ -1427,7 +1419,8 @@ app.post('/api/provider/listings', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (user.role !== 'provider') fail(403, 'Use a service provider account to create a service listing.');
   if (!hasCompleteBusinessProfile(user)) fail(409, 'Complete your public business profile before publishing a service.');
-  const { niche, title, description, price, portfolio, video, videoDuration } = request.body || {};
+  const { niche: rawNiche, title, description, price, portfolio, video, videoDuration } = request.body || {};
+  const niche = currentNiche(rawNiche);
   if (!serviceNiches.includes(niche)) fail(400, 'Choose one of the available service niches.');
   if (typeof title !== 'string' || title.trim().length < 3 || title.length > 100) fail(400, 'Enter a service title.');
   if (typeof description !== 'string' || description.trim().length < 10 || description.length > 1500) fail(400, 'Describe your service in at least 10 characters.');
@@ -1696,7 +1689,7 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
   const sanitizedUsername = sanitizeText(username, '').toLowerCase();
   const sanitizedEmail = sanitizeText(email, '').toLowerCase();
   const sanitizedBusiness = businessName ? sanitizeText(businessName, '') : undefined;
-  const sanitizedNiche = niche ? sanitizeText(niche, '') : undefined;
+  const sanitizedNiche = niche ? currentNiche(sanitizeText(niche, '')) : undefined;
   if (role === 'provider' && !serviceNiches.includes(sanitizedNiche || '')) fail(400, 'Choose an available service niche.');
   if (state.users.some((user) => (user.username || legacyUsername(user)).toLowerCase() === sanitizedUsername)) fail(409, 'That username is already taken.');
   if (state.users.some((user) => user.email.toLowerCase() === sanitizedEmail && user.role === role)) fail(409, 'This email already has an account for that role. Choose another role or sign in.');
