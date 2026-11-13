@@ -628,3 +628,17 @@ body.dark-theme .service-chip.selected{background:#a9c5ff;border-color:#a9c5ff;c
 .sv-rail{position:absolute;right:10px;bottom:150px;z-index:3;display:flex;flex-direction:column;align-items:center;gap:16px}
 .sv-rail button{display:grid;justify-items:center;gap:2px;padding:0;border:0;background:none;color:#fff;font-size:12px;font-weight:700;cursor:pointer;text-shadow:0 1px 3px rgba(0,0,0,.7)}
 .sv-rail button svg{width:46px;height:46px;padding:11px;border-radius:50%;background:rgba(0,0,0,.55)}
+
+/* Services: group row + services row, grouped menu */
+.service-bar{flex-direction:column;gap:8px;overflow:visible;white-space:normal}
+.service-bar-row{display:flex;gap:8px;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+.service-bar-row::-webkit-scrollbar{display:none}
+.service-bar-subs .service-chip{height:32px;font-size:12px;font-weight:500}
+.menu-niches{padding-left:0}
+.menu-group{border-top:1px solid #eef1f7}
+.menu-group summary{display:flex;align-items:center;justify-content:space-between;padding:10px;font-size:14px;font-weight:700;cursor:pointer;list-style:none}
+.menu-group summary::after{content:"+";font-size:16px}
+.menu-group[open] summary::after{content:"−"}
+.menu-group button{padding-left:22px;font-size:13px}
+.menu-group button[data-menu-group]{color:#214bc4}
+body.dark-theme .menu-group{border-color:#303a4b}
