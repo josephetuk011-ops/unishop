@@ -136,6 +136,8 @@ function renderDetailExtras(product) {
   document.querySelector('#detail-add-to-bag').disabled = product.stock === 0;
 }
 
+// Read the shared-short parameter before anything else rewrites the address bar.
+const sharedShortParam = new URLSearchParams(window.location.search).get('short');
 let shortItems = [];
 function renderShorts() {
   const shortProducts = products.filter((product) => product.video && Number(product.videoDuration) > 0 && Number(product.videoDuration) <= 30);
@@ -825,7 +827,7 @@ async function shareShort(key, title = 'a short') {
 let sharedShortOpened = false;
 function openSharedShort() {
   if (sharedShortOpened) return;
-  const wanted = new URLSearchParams(window.location.search).get('short');
+  const wanted = sharedShortParam;
   if (!wanted) { sharedShortOpened = true; return; }
   const index = shortItems.findIndex((item) => `${item.kind}-${item.id}` === wanted);
   if (index < 0) return;
@@ -1142,7 +1144,9 @@ if ('serviceWorker' in navigator) window.addEventListener('load', () => navigato
   const incoming = new URLSearchParams(window.location.search).get('ref');
   if (incoming && /^[A-Za-z0-9]{6,12}$/.test(incoming)) {
     localStorage.setItem('unishop-ref', incoming.toUpperCase());
-    history.replaceState(null, '', window.location.pathname + window.location.hash);
+    const rest = new URLSearchParams(window.location.search);
+    rest.delete('ref');
+    history.replaceState(null, '', window.location.pathname + (rest.toString() ? `?${rest}` : '') + window.location.hash);
   }
   const backdropNode = document.querySelector('#referral-backdrop');
   const button = document.querySelector('#referral-button');

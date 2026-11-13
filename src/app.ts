@@ -901,6 +901,33 @@ app.get('/vendor.html', (request: Request, response: Response, next: NextFunctio
     response.type('html').send(html.replace(/<title>[^<]*<\/title>/, `<title>${escapeAttr(title)}</title>${tags}`));
   });
 });
+// Shared short links (/?short=product-<id>) show the short's picture and name when pasted into WhatsApp and other apps.
+app.get('/', (request: Request, response: Response, next: NextFunction) => {
+  const wanted = String(request.query.short || '');
+  const match = /^(product|service)-([\w-]{1,80})$/.exec(wanted);
+  if (!match) return next();
+  const [, kind, id] = match;
+  const item: any = kind === 'product' ? state.sellerProducts.find((entry) => entry.id === id) : state.serviceListings.find((entry) => entry.id === id);
+  if (!item || !item.video) return next();
+  const escapeAttr = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+  const base = (process.env.PUBLIC_URL || `${request.protocol}://${request.get('host')}`).replace(/\/$/, '');
+  const absolute = (value: string) => (value.startsWith('/') ? `${base}${value}` : /^https?:\/\//.test(value) ? value : `https://images.unsplash.com/${value}?auto=format&fit=crop&w=1200&q=80`);
+  const video = String(item.video);
+  const frame = /^https:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\//.test(video) ? video.replace('/video/upload/', '/video/upload/so_0,w_1200,h_630,c_fill/').replace(/\.[a-z0-9]+(\?.*)?$/i, '.jpg') : '';
+  const picture = String(item.image || item.portfolio?.[0] || item.images?.[0] || '');
+  const image = frame || (picture ? absolute(picture) : `${base}/assets/icon-512.png`);
+  const name = String(kind === 'product' ? item.name : item.title || item.niche || 'Local service');
+  const seller = String(item.seller || item.businessName || item.provider || 'a Uyo vendor');
+  const title = `${name} on Unishop`;
+  const description = (kind === 'product' ? `Watch ${name} from ${seller}${item.price ? ` for ₦${Number(item.price).toLocaleString('en-NG')}` : ''} on Unishop, Uyo.` : `Watch ${name} by ${seller} on Unishop, Uyo.`).slice(0, 180);
+  const pageUrl = `${base}/?short=${wanted}`;
+  const tags = `<meta property="og:type" content="website"><meta property="og:site_name" content="Unishop"><meta property="og:title" content="${escapeAttr(title)}"><meta property="og:description" content="${escapeAttr(description)}"><meta property="og:image" content="${escapeAttr(image)}"><meta property="og:url" content="${escapeAttr(pageUrl)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escapeAttr(title)}"><meta name="twitter:image" content="${escapeAttr(image)}">`;
+  fs.readFile(path.join(__dirname, '..', 'public', 'index.html'), 'utf8', (error, html) => {
+    if (error) return next();
+    response.setHeader('Cache-Control', 'no-cache');
+    response.type('html').send(html.replace(/<title>[^<]*<\/title>/, `<title>${escapeAttr(title)}</title>${tags}`).replace(/<meta name="description"[^>]*>/, `<meta name="description" content="${escapeAttr(description)}">`));
+  });
+});
 app.use(express.static(path.join(__dirname, '..', 'public'), {
   etag: true,
   setHeaders: (res, filePath) => {
