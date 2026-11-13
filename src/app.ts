@@ -913,7 +913,12 @@ app.get('/', (request: Request, response: Response, next: NextFunction) => {
   const base = (process.env.PUBLIC_URL || `${request.protocol}://${request.get('host')}`).replace(/\/$/, '');
   const absolute = (value: string) => (value.startsWith('/') ? `${base}${value}` : /^https?:\/\//.test(value) ? value : `https://images.unsplash.com/${value}?auto=format&fit=crop&w=1200&q=80`);
   const video = String(item.video);
-  const frame = /^https:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\//.test(video) ? video.replace('/video/upload/', '/video/upload/so_0,w_1200,h_630,c_fill/').replace(/\.[a-z0-9]+(\?.*)?$/i, '.jpg') : '';
+  const cloudVideo = /^(https:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\/)(.+)$/.exec(video);
+  // Drop any stored delivery transformations (f_auto would send the video back) and ask Cloudinary for the first frame as a JPEG.
+  const cloudParts = cloudVideo ? cloudVideo[2].split('/') : [];
+  const versionAt = cloudParts.findIndex((part) => /^v\d+$/.test(part));
+  const publicPath = (versionAt >= 0 ? cloudParts.slice(versionAt) : cloudParts.filter((part) => !part.includes(',') && !/^[a-z]{1,3}_[^/]+$/.test(part))).join('/').replace(/\.[a-z0-9]+(\?.*)?$/i, '.jpg');
+  const frame = cloudVideo ? `${cloudVideo[1]}so_0,w_1200,h_630,c_fill,f_jpg/${publicPath}` : '';
   const picture = String(item.image || item.portfolio?.[0] || item.images?.[0] || '');
   const image = frame || (picture ? absolute(picture) : `${base}/assets/icon-512.png`);
   const name = String(kind === 'product' ? item.name : item.title || item.niche || 'Local service');
