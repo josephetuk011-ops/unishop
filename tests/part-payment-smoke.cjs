@@ -56,6 +56,15 @@ const server = app.listen(0, async () => {
     assert.equal(amount, 2900000);
     assert.equal(full.data.order.paymentPlan, 'full');
 
+    // Goods under 3,000 get free delivery; 3,000 and above pay 500.
+    const cheap = await send('POST', '/api/seller/products', { name: 'Cheap soap', category: 'Home', description: 'A cheap item for free delivery tests.', price: 1200, image }, sellerReg.data.token);
+    assert.equal(cheap.status, 201);
+    const small = await send('POST', '/api/payments/initialize', { ...body('full'), items: [{ id: cheap.data.product.id, quantity: 1 }] }, buyer.data.token);
+    assert.equal(small.status, 201);
+    assert.equal(small.data.order.totalNaira, 1200);
+    assert.equal(small.data.order.dispatchFeeNaira, 0);
+    assert.equal(full.data.order.dispatchFeeNaira, 500);
+
     // Part payment: (28,500 + 500 + 200 fee) split in two = 14,600 now and 14,600 later.
     const part = await send('POST', '/api/payments/initialize', body('part'), buyer.data.token);
     assert.equal(part.status, 201);

@@ -543,6 +543,9 @@ function apiRequest(url, options = {}) {
   });
 }
 
+const FREE_DELIVERY_BELOW = 3000;
+function deliveryFeeFor(itemsTotal) { return itemsTotal >= FREE_DELIVERY_BELOW ? 500 : 0; }
+
 function openCheckout() {
   const lines = Object.entries(cart).filter(([, quantity]) => quantity > 0);
   if (!lines.length) return;
@@ -551,11 +554,13 @@ function openCheckout() {
     const product = products.find((item) => item.id === parts.id);
     if (!product) return '';
     return `<div class="checkout-line"><span>${quantity} × ${product.name}${parts.size ? ` (${escapeShortText(parts.size)})` : ''}</span><strong>${formatPrice(product.price * quantity)}</strong></div>`;
-  }).join('') + '<div class="checkout-line delivery-charge"><span>Uyo delivery</span><strong>₦500</strong></div>';
+  }).join('') + '';
   const itemsTotal = lines.reduce((total, [key, quantity]) => total + (products.find((product) => product.id === cartParts(key).id)?.price || 0) * quantity, 0);
+  const deliveryFee = deliveryFeeFor(itemsTotal);
+  document.querySelector('#checkout-items').insertAdjacentHTML('beforeend', `<div class="checkout-line delivery-charge"><span>Uyo delivery</span><strong>${deliveryFee ? formatPrice(deliveryFee) : 'Free delivery'}</strong></div>`);
   const discount = rewardFor(itemsTotal);
   if (discount) document.querySelector('#checkout-items').insertAdjacentHTML('beforeend', `<div class="checkout-line cart-reward-line"><span>Referral reward</span><strong>−${formatPrice(discount)}</strong></div>`);
-  document.querySelector('#checkout-total').textContent = formatPrice(itemsTotal + 500 - discount);
+  document.querySelector('#checkout-total').textContent = formatPrice(itemsTotal + deliveryFee - discount);
   closeCart();
   document.querySelector('#checkout-backdrop').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -601,7 +606,7 @@ document.querySelector('#checkout-form').addEventListener('submit', async (event
   const original = submit.innerHTML;
   const checkoutLines = Object.entries(cart).filter(([, quantity]) => quantity > 0);
   const checkoutItems = checkoutLines.reduce((total, [key, quantity]) => total + (products.find((product) => product.id === cartParts(key).id)?.price || 0) * quantity, 0);
-  const plan = await window.UnishopPayPlan.choose(checkoutItems + 500 - rewardFor(checkoutItems));
+  const plan = await window.UnishopPayPlan.choose(checkoutItems + deliveryFeeFor(checkoutItems) - rewardFor(checkoutItems));
   if (!plan) return;
   submit.disabled = true;
   submit.textContent = 'Connecting securely…';
