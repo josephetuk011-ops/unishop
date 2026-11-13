@@ -28,13 +28,13 @@ const server = app.listen(0, async () => {
   const password = 'marketplacepassword123';
   try {
     const stamp = Date.now();
-    const provider = await send('POST', '/api/auth/register', { name: 'Pro Vider', username: `pro${stamp}`, email: `pro${stamp}@example.com`, password, role: 'provider', businessName: 'Pro Studio', niche: 'Barbing' });
+    const provider = await send('POST', '/api/auth/register', { name: 'Pro Vider', username: `pro${stamp}`, email: `pro${stamp}@example.com`, password, role: 'provider', acceptTerms: true, businessName: 'Pro Studio', niche: 'Barbing' });
     await send('PATCH', '/api/profile', { name: 'Pro Vider', businessName: 'Pro Studio', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'Barbing appointments and home visits for customers across Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/c.jpg' }, provider.data.token);
     const listing = (await send('POST', '/api/provider/listings', { niche: 'Barbing', title: 'Home barbing', description: 'Barbing with home visits in Uyo.', portfolio: ['/uploads/w.jpg'] }, provider.data.token)).data.listing;
     assert.equal(listing.price, null);
     const services = (await send('GET', '/api/services')).data;
     assert.equal(services.find((item) => item.id === listing.id).online, true, 'provider is online after using the API');
-    const vendor = await send('POST', '/api/auth/register', { name: 'Ven Dor', username: `ven${stamp}`, email: `ven${stamp}@example.com`, password, role: 'seller', businessName: 'Ven Shop' });
+    const vendor = await send('POST', '/api/auth/register', { name: 'Ven Dor', username: `ven${stamp}`, email: `ven${stamp}@example.com`, password, role: 'seller', acceptTerms: true, businessName: 'Ven Shop' });
     const online = await send('GET', '/api/online-providers', undefined, vendor.data.token);
     assert.ok(online.data.some((item) => item.name === 'Pro Studio'), 'vendors can see online providers');
     const customer = await send('POST', '/api/auth/register', { name: 'Cus Tomer', username: `cus${stamp}`, email: `cus${stamp}@example.com`, password, role: 'customer' });

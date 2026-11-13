@@ -82,7 +82,7 @@ describe('E-Marketplace Application', () => {
         username,
         email: `${username}@example.com`,
         password: 'providerpassword123',
-        role: 'provider',
+        role: 'provider', acceptTerms: true,
         businessName: 'Test Barbershop',
         niche: 'Barbing'
       });
@@ -175,7 +175,7 @@ describe('E-Marketplace Application', () => {
     delete process.env.NIN_VERIFICATION_ENABLED;
     try {
       const username = `nooff${Date.now()}`;
-      const reg = await request(app).post('/api/auth/register').send({ name: 'No Nin', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Plain Shop' });
+      const reg = await request(app).post('/api/auth/register').send({ name: 'No Nin', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'seller', acceptTerms: true, businessName: 'Plain Shop' });
       expect(reg.status).toBe(201);
       expect(reg.body.user.ninRequired).toBe(false);
       expect((await request(app).post('/api/profile/nin').set('Authorization', `Bearer ${reg.body.token}`).send({ nin: uniqueNin() })).status).toBe(404);
@@ -185,7 +185,7 @@ describe('E-Marketplace Application', () => {
   it('does not ask for a NIN at signup; verifies it from the profile with the provider and never returns it', async () => {
     const username = `nin${Date.now()}`;
     const nin = uniqueNin();
-    const body = { name: 'Ada Okon', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Nin Shop' };
+    const body = { name: 'Ada Okon', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'seller', acceptTerms: true, businessName: 'Nin Shop' };
     const reg = await request(app).post('/api/auth/register').send(body);
     expect(reg.status).toBe(201);
     const auth = { Authorization: `Bearer ${reg.body.token}` };
@@ -217,11 +217,26 @@ describe('E-Marketplace Application', () => {
     }
   });
 
+  it('should require vendors and providers to agree to the terms, but not customers', async () => {
+    const make = (role: string, extra: object = {}) => {
+      const username = `${role}t${Date.now()}${Math.floor(Math.random() * 100000)}`;
+      return request(app).post('/api/auth/register').send({ name: 'Terms Person', username, email: `${username}@example.com`, password: 'marketplacepassword123', role, businessName: 'Terms Shop', niche: 'Barbing', ...extra });
+    };
+    const refused = await make('seller');
+    expect(refused.status).toBe(400);
+    expect(refused.body.message || refused.body.error).toMatch(/terms/i);
+    expect((await make('provider', { acceptTerms: false })).status).toBe(400);
+    const agreed = await make('seller', { acceptTerms: true });
+    expect(agreed.status).toBe(201);
+    expect(agreed.body.user.termsAcceptedAt).toBeTruthy();
+    expect((await make('customer')).status).toBe(201);
+  });
+
   it.each([
-    { role: 'seller', businessName: 'Test Shop' },
-    { role: 'provider', businessName: 'Test Service', niche: 'Barbing' },
+    { role: 'seller', acceptTerms: true, businessName: 'Test Shop' },
+    { role: 'provider', acceptTerms: true, businessName: 'Test Service', niche: 'Barbing' },
     { role: 'dispatch', businessName: 'Ewet Housing' }
-  ])('should sign in a $role account and return its dashboard data', async ({ role, businessName, niche }) => {
+  ])('should sign in a $role account and return its dashboard data', async ({ role, businessName, niche, acceptTerms }) => {
     const username = `${role}${Date.now()}${Math.floor(Math.random() * 1000)}`;
     const registration = await request(app).post('/api/auth/register').send({
       name: 'Marketplace User',
@@ -230,7 +245,8 @@ describe('E-Marketplace Application', () => {
       password: 'marketplacepassword123',
       role,
       businessName,
-      niche
+      niche,
+      acceptTerms
     });
 
     expect(registration.status).toBe(201);

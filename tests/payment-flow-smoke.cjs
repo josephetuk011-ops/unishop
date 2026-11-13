@@ -63,12 +63,12 @@ const server = app.listen(0, async () => {
     assert.equal(niches.data.length, 190);
     assert.ok(niches.data.some((niche) => niche.name === 'Graphic designers') && niches.data.some((niche) => niche.name === 'Dry cleaning'));
     const invalidProvider = await send('POST', '/api/auth/register', {
-      name: 'Invalid Niche', username: 'invalidniche', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'provider', businessName: 'Bad listing', niche: 'Car washing'
+      name: 'Invalid Niche', username: 'invalidniche', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'provider', acceptTerms: true, businessName: 'Bad listing', niche: 'Car washing'
     });
     assert.equal(invalidProvider.status, 400);
 
     const provider = await send('POST', '/api/auth/register', {
-      name: 'Test Provider', username: 'uyoprovider', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'provider', businessName: 'Test Barbing Studio', niche: 'Barbing'
+      name: 'Test Provider', username: 'uyoprovider', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'provider', acceptTerms: true, businessName: 'Test Barbing Studio', niche: 'Barbing'
     });
     assert.equal(provider.status, 201);
     assert.equal((await send('POST', '/api/profile/nin', { nin: '12345678901' }, provider.data.token)).status, 200);
@@ -107,7 +107,7 @@ const server = app.listen(0, async () => {
     assert.equal(booking.status, 201);
 
     const seller = await send('POST', '/api/auth/register', {
-      name: 'Test Seller', username: 'uyoseller', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'seller', businessName: 'Test Uyo Store'
+      name: 'Test Seller', username: 'uyoseller', email: 'buyer@example.com', password: 'A-secure-test-password', role: 'seller', acceptTerms: true, businessName: 'Test Uyo Store'
     });
     assert.equal(seller.status, 201);
     assert.equal((await send('POST', '/api/profile/nin', { nin: '12345678902' }, seller.data.token)).status, 200);

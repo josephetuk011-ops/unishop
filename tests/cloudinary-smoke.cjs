@@ -55,7 +55,7 @@ cloudinary.listen(0, () => {
     const localFiles = () => (fs.existsSync(process.env.UPLOADS_DIRECTORY) ? fs.readdirSync(process.env.UPLOADS_DIRECTORY) : []);
     try {
       const stamp = Date.now();
-      const seller = await send('POST', '/api/auth/register', { name: 'Cloud Seller', username: `cld${stamp}`, email: `cld${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Cloud Shop' });
+      const seller = await send('POST', '/api/auth/register', { name: 'Cloud Seller', username: `cld${stamp}`, email: `cld${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', acceptTerms: true, businessName: 'Cloud Shop' });
       const token = seller.data.token;
 
       const photo = await upload('/api/uploads/portfolio', 'images', 'a.jpg', 'image/jpeg', jpeg, token);

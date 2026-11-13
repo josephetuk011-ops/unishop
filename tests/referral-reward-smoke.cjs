@@ -36,7 +36,7 @@ const server = app.listen(0, async () => {
     const stamp = Date.now();
     const reg = (username, extra = {}) => send('POST', '/api/auth/register', { name: 'Ref Person', username, email: `${username}@example.com`, password: 'marketplacepassword123', role: 'customer', ...extra });
     // The built-in demo catalogue is gone, so create one real vendor product (28,500 naira) to buy.
-    const sellerReg = await send('POST', '/api/auth/register', { name: 'Ref Seller', username: `refsel${stamp}`, email: `refsel${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Ref Store' });
+    const sellerReg = await send('POST', '/api/auth/register', { name: 'Ref Seller', username: `refsel${stamp}`, email: `refsel${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', acceptTerms: true, businessName: 'Ref Store' });
     assert.equal((await send('POST', '/api/profile/nin', { nin: '12345678903' }, sellerReg.data.token)).status, 200);
     assert.equal((await send('PATCH', '/api/profile', { name: 'Ref Seller', businessName: 'Ref Store', position: 'Owner', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'A local shop sharing practical goods with customers around Uyo.', profileImage: '/uploads/a.jpg', ceoImage: '/uploads/b.jpg' }, sellerReg.data.token)).status, 200);
     const form = new FormData(); form.append('images', new Blob([Buffer.from([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' }), 'i.jpg');

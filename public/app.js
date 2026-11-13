@@ -1031,6 +1031,9 @@ authForm.addEventListener('submit', async (event) => {
   showAuthError('');
   try {
     const registering = selectedAuthMode === 'register';
+    if (registering && ['seller', 'provider'].includes(selectedAuthRole)) {
+      if (!(await window.showVendorTerms(selectedAuthRole, 'Go back'))) { submit.disabled = false; return; }
+    }
     const credentials = { username: form.elements.username.value, password: form.elements.password.value };
     if (registering) {
       credentials.name = form.elements.name.value;
@@ -1039,6 +1042,7 @@ authForm.addEventListener('submit', async (event) => {
       const businessName = form.elements.business.value.trim();
       if (businessName) credentials.businessName = businessName;
       if (selectedAuthRole === 'provider') credentials.niche = form.elements.niche.value;
+      if (['seller', 'provider'].includes(selectedAuthRole)) credentials.acceptTerms = true;
       const referral = localStorage.getItem('unishop-ref');
       if (referral) credentials.ref = referral;
     }
