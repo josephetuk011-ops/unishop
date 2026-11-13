@@ -608,7 +608,7 @@ function commissionFor(subtotalNaira: number) {
   return Math.round(subtotalNaira * rate);
 }
 
-function sellerSettlementLines(items: any[]) {
+function sellerSettlementLines(items: any[], waiveDispatch = false) {
   const sellers = new Map<string, { subtotalNaira: number; items: any[] }>();
   items.forEach((item) => {
     if (!item.sellerUserId) return;
@@ -619,7 +619,7 @@ function sellerSettlementLines(items: any[]) {
   });
   return [...sellers].map(([userId, seller]) => {
     const commissionNaira = commissionFor(seller.subtotalNaira);
-    const dispatchContributionNaira = 500;
+    const dispatchContributionNaira = waiveDispatch ? 0 : 500;
     const netNaira = seller.subtotalNaira - commissionNaira - dispatchContributionNaira;
     if (netNaira < 0) fail(400, 'A seller subtotal must cover its ₦500 dispatch contribution and Unishop commission.');
     return { userId, role: 'seller', subtotalNaira: seller.subtotalNaira, commissionNaira, dispatchContributionNaira, netNaira };
@@ -2210,7 +2210,7 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
       service: false,
       ...(product.preorder ? { preorder: true, preorderDays: product.preorderDays } : {})
     }));
-    settlementLines = sellerSettlementLines(orderItems);
+    settlementLines = sellerSettlementLines(orderItems, orderItems.reduce((sum: number, item: any) => sum + item.lineTotal, 0) < FREE_DELIVERY_BELOW_NAIRA);
     const goodsSubtotalNaira = orderItems.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
     goodsDeliveryFeeNaira = goodsSubtotalNaira >= FREE_DELIVERY_BELOW_NAIRA ? DELIVERY_FEE_NAIRA : 0;
     totalNaira = goodsSubtotalNaira + goodsDeliveryFeeNaira;
