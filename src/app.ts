@@ -47,7 +47,7 @@ const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED !== 'fal
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
 type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; resetTokenHash?: string; resetExpiresAt?: number; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; termsAcceptedAt?: string; termsVersion?: string; };
-type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[]; conversations: any[]; chatMessages: any[]; shortLikes?: Record<string, string[]> };
+type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[]; conversations: any[]; chatMessages: any[]; shortLikes?: Record<string, string[]>; sentMails?: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
 const refreshTokenCookieName = 'unishop-refresh';
@@ -307,7 +307,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.MARKETPLACE_DATA_PATH)
 function loadState(): MarketplaceState {
   try {
     const parsed = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [], auditLogs: parsed.auditLogs || [], notifications: parsed.notifications || [], pushSubscriptions: parsed.pushSubscriptions || [], conversations: parsed.conversations || [], chatMessages: parsed.chatMessages || [], shortLikes: parsed.shortLikes || {} };
+    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [], auditLogs: parsed.auditLogs || [], notifications: parsed.notifications || [], pushSubscriptions: parsed.pushSubscriptions || [], conversations: parsed.conversations || [], chatMessages: parsed.chatMessages || [], shortLikes: parsed.shortLikes || {}, sentMails: parsed.sentMails || [] };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     return { users: [], orders: [], bookings: [], serviceListings: [], sellerProducts: [], reviews: [], payouts: [], auditLogs: [], notifications: [], pushSubscriptions: [], conversations: [], chatMessages: [], shortLikes: {} };
@@ -1074,6 +1074,14 @@ app.get('/api/admin/mail/recipients', (request: Request, response: Response) => 
     .sort((left, right) => left.name.localeCompare(right.name));
   response.json({ recipients, mailConfigured: Boolean(process.env.RESEND_API_KEY) });
 });
+// Sent mail history. Mail sent before the full text was stored only has its audit entry (subject and counts).
+app.get('/api/admin/mail/sent', (request: Request, response: Response) => {
+  requireAdmin(request);
+  const full = (state.sentMails || []).map((mail) => ({ id: mail.id, createdAt: mail.createdAt, subject: mail.subject, message: mail.message, audience: mail.audience, recipients: mail.recipients, sent: mail.sent, failed: mail.failed, total: mail.recipients.length, detailsKept: true }));
+  const older = (state.auditLogs || []).filter((entry) => entry.action === 'admin.mail.sent' && !entry.details?.mailId).map((entry) => ({ id: entry.id, createdAt: entry.createdAt, subject: String(entry.details?.subject || ''), message: '', audience: '', recipients: [] as string[], sent: Number(entry.details?.sent || 0), failed: [] as string[], failedCount: Number(entry.details?.failed || 0), total: Number(entry.details?.recipients || 0), detailsKept: false }));
+  const mails = [...full, ...older].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  response.json({ mails });
+});
 app.post('/api/admin/mail', adminMailLimiter, asyncRoute(async (request, response) => {
   const admin = requireAdmin(request);
   if (!process.env.RESEND_API_KEY) fail(503, 'Email is not set up on this deployment (RESEND_API_KEY is missing).');
@@ -1109,7 +1117,12 @@ app.post('/api/admin/mail', adminMailLimiter, asyncRoute(async (request, respons
       try { await sendAdminMessage(email, subject, message); sent += 1; } catch (error) { failed.push(email); console.error('Admin mail failed:', (error as Error).message); }
     }));
   }
-  auditAction('admin.mail.sent', admin.id, { subject, recipients: emails.length, sent, failed: failed.length });
+  const mailId = randomBytes(8).toString('hex');
+  const audienceLabel = ['all', 'customer', 'seller', 'provider', 'dispatch'].includes(audience) ? audience : userIds.length || extra.length ? 'selected' : '';
+  state.sentMails = state.sentMails || [];
+  state.sentMails.push({ id: mailId, createdAt: new Date().toISOString(), subject, message, audience: audienceLabel, recipients: emails, sent, failed });
+  if (state.sentMails.length > 500) state.sentMails = state.sentMails.slice(-500);
+  auditAction('admin.mail.sent', admin.id, { mailId, subject, recipients: emails.length, sent, failed: failed.length });
   response.json({ sent, failed, total: emails.length });
 }));
 app.get('/api/admin/users/:id/nin', (request: Request, response: Response) => {
