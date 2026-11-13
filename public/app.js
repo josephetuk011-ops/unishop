@@ -244,6 +244,15 @@ function renderProducts() {
   const nicheGrid = document.querySelector('#marketplace-niches');
   nicheGrid.innerHTML = serviceNiches.map(([name, image]) => `<button class="service-niche-card ${activeNiche === name ? 'selected' : ''}" data-service-niche="${name}"><img src="${imageUrl(image, 640)}" alt="${name} service in Uyo" loading="lazy"><span>${name}</span><b>Explore ↗</b></button>`).join('');
   nicheGrid.hidden = true;
+  const serviceBar = document.querySelector('#service-bar');
+  if (serviceBar) {
+    serviceBar.hidden = marketMode !== 'services';
+    if (marketMode === 'services') {
+      serviceBar.innerHTML = ['All', ...serviceNiches.map(([name]) => name)].map((name) => `<button type="button" role="tab" class="service-chip ${activeNiche === name ? 'selected' : ''}" data-service-chip="${name}" aria-selected="${activeNiche === name}">${name === 'All' ? 'All services' : name}</button>`).join('');
+      const picked = serviceBar.querySelector('.selected');
+      if (picked && !serviceBar.dataset.scrolled) { serviceBar.scrollLeft = Math.max(0, picked.offsetLeft - 16); }
+    } else delete serviceBar.dataset.scrolled;
+  }
   document.querySelector('.category-pills').hidden = marketMode === 'services';
 }
 
@@ -1123,3 +1132,14 @@ loadReward();
     if (event.target.closest('[data-nav-mode], .referral-button, .sell-link')) setOpen(false);
   });
 })();
+
+document.querySelector('#service-bar')?.addEventListener('click', (event) => {
+  const chip = event.target.closest('[data-service-chip]');
+  if (!chip) return;
+  const bar = event.currentTarget;
+  const left = bar.scrollLeft;
+  renderProviders(chip.dataset.serviceChip);
+  const fresh = document.querySelector('#service-bar');
+  fresh.scrollLeft = left;
+  fresh.querySelector('.selected')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+});

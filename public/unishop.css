@@ -609,3 +609,14 @@ body.dark-theme .menu-section a:hover,body.dark-theme .menu-section button:hover
 body.dark-theme .menu-section a.active,body.dark-theme .menu-section a.active:hover{background:#a9c5ff;color:#101a33}
 body.dark-theme .site-header .header-actions .cart-button .cart-count{background:#a9c5ff;color:#101a33}
 @media(max-width:900px){.site-header{height:56px;flex-wrap:nowrap;padding:8px 14px}}
+
+/* Services: sticky bar listing every service category */
+.service-bar{position:sticky;top:56px;z-index:40;display:flex;gap:8px;margin:0 -4px 14px;padding:10px 4px;overflow-x:auto;white-space:nowrap;background:#fff;border-bottom:1px solid #e5e9f2;scrollbar-width:none}
+.service-bar[hidden]{display:none}
+.service-bar::-webkit-scrollbar{display:none}
+.service-chip{flex:none;height:36px;padding:0 14px;border:1px solid #dce3f2;border-radius:999px;background:#fff;color:#172957;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.service-chip.selected{background:#172957;border-color:#172957;color:#fff}
+body.dark-theme .service-bar{background:#151e2b;border-color:#303a4b}
+body.dark-theme .service-chip{background:#1d2738;border-color:#303a4b;color:#dce5f7}
+body.dark-theme .service-chip.selected{background:#a9c5ff;border-color:#a9c5ff;color:#101a33}
+@media(min-width:901px){.service-bar{top:60px}}
