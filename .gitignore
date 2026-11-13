@@ -6,3 +6,6 @@ node_modules/
 dist/
 coverage/
 public/uploads/*
+# Android signing keys
+*.keystore
+*.jks
