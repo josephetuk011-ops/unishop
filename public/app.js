@@ -67,8 +67,46 @@ function escapeShortText(value = '') {
   return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
 }
 
-function shortOverlay(seller, title) {
-  return `<button class="short-share" type="button" data-short-share="${escapeShortText(title)}" aria-label="Share this short"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M18 16a3 3 0 0 0-2.2 1l-6.6-3.3a3 3 0 0 0 0-1.4L15.800 8a3 3 0 1 0-.8-1.800L8.400 9.500a3 3 0 1 0 0 5l6.600 3.300A3 3 0 1 0 18 16z"/></svg></button><div class="short-watermark" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""></div>`;
+let shortLikes = { counts: {}, mine: [] };
+const shortKeyOf = (item) => `${item.kind}:${item.id}`;
+const heartIcon = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 21s-7.5-4.6-9.6-9.2C.8 8.200 2.800 4.500 6.400 4.500c2 0 3.600 1.100 4.600 2.700h2c1-1.600 2.600-2.700 4.600-2.700 3.600 0 5.600 3.700 4 7.300C19.500 16.400 12 21 12 21z"/></svg>';
+function likeButton(key, className) {
+  const liked = shortLikes.mine.includes(key);
+  const count = shortLikes.counts[key] || 0;
+  return `<button type="button" class="${className}${liked ? ' liked' : ''}" data-short-like="${escapeShortText(key)}" aria-pressed="${liked}" aria-label="${liked ? 'Unlike' : 'Like'} this short">${heartIcon}<span>${count || ''}</span></button>`;
+}
+function refreshShortLikes() {
+  document.querySelectorAll('[data-short-like]').forEach((node) => {
+    const key = node.dataset.shortLike;
+    const liked = shortLikes.mine.includes(key);
+    node.classList.toggle('liked', liked);
+    node.setAttribute('aria-pressed', String(liked));
+    node.querySelector('span').textContent = shortLikes.counts[key] || '';
+  });
+}
+async function loadShortLikes() {
+  try { shortLikes = await apiRequest('/api/shorts/likes'); refreshShortLikes(); } catch {}
+}
+async function toggleShortLike(key) {
+  if (!sessionToken || !currentUser) { openAuth('customer', 'register'); showToast('Create an account or sign in to like shorts.'); return; }
+  const was = shortLikes.mine.includes(key);
+  shortLikes.mine = was ? shortLikes.mine.filter((k) => k !== key) : [...shortLikes.mine, key];
+  shortLikes.counts[key] = Math.max(0, (shortLikes.counts[key] || 0) + (was ? -1 : 1));
+  refreshShortLikes();
+  try {
+    const [kind, ...rest] = key.split(':');
+    const result = await apiRequest(`/api/shorts/${kind}/${encodeURIComponent(rest.join(':'))}/like`, { method: 'POST' });
+    shortLikes.counts[key] = result.count;
+    shortLikes.mine = result.liked ? [...new Set([...shortLikes.mine, key])] : shortLikes.mine.filter((k) => k !== key);
+    refreshShortLikes();
+  } catch (error) {
+    await loadShortLikes();
+    showToast(error.message || 'Could not save your like.');
+  }
+}
+
+function shortOverlay(seller, title, key = '') {
+  return `${key ? likeButton(key, 'short-like') : ''}<button class="short-share" type="button" data-short-share="${escapeShortText(key)}" data-short-title="${escapeShortText(title)}" aria-label="Share this short"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M18 16a3 3 0 0 0-2.2 1l-6.6-3.3a3 3 0 0 0 0-1.4L15.800 8a3 3 0 1 0-.8-1.800L8.400 9.500a3 3 0 1 0 0 5l6.600 3.300A3 3 0 1 0 18 16z"/></svg></button><div class="short-watermark" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""></div>`;
 }
 
 function stockBadge(product) {
@@ -102,7 +140,7 @@ function renderShorts() {
       return { kind: 'service', id: provider.id, video: provider.video, poster: imageUrl(image, 640), seller: provider.provider || provider.name || 'Service provider', userId: provider.userId, title: provider.title || provider.trade || provider.niche || 'Local service' };
     })
   ];
-  const cards = shortItems.map((item, index) => `<article class="short-card"><div class="short-media" data-short-open="${index}" role="button" tabindex="0" aria-label="Watch ${escapeShortText(item.title)}"><video src="${escapeShortText(item.video)}#t=0.1" poster="${escapeShortText(item.poster)}" muted playsinline preload="metadata"></video><span class="short-play" aria-hidden="true">▶</span>${shortOverlay(item.seller, item.title)}</div><div class="short-card-copy"><p class="short-card-source">${escapeShortText(item.seller)}</p><h3>${escapeShortText(item.title)}</h3><div class="short-card-action">${item.kind === 'product' ? `<strong>${formatPrice(item.price)}</strong><button class="add-button" data-short-add="${escapeShortText(item.id)}">Add to bag</button>` : `<button class="negotiate-button" data-short-book="${escapeShortText(item.id)}">View service</button>`}</div></div></article>`);
+  const cards = shortItems.map((item, index) => `<article class="short-card"><div class="short-media" data-short-open="${index}" role="button" tabindex="0" aria-label="Watch ${escapeShortText(item.title)}"><video src="${escapeShortText(item.video)}#t=0.1" poster="${escapeShortText(item.poster)}" muted playsinline preload="metadata"></video><span class="short-play" aria-hidden="true">▶</span>${shortOverlay(item.seller, item.title, shortKeyOf(item))}</div><div class="short-card-copy"><p class="short-card-source">${escapeShortText(item.seller)}</p><h3>${escapeShortText(item.title)}</h3><div class="short-card-action">${item.kind === 'product' ? `<strong>${formatPrice(item.price)}</strong><button class="add-button" data-short-add="${escapeShortText(item.id)}">Add to bag</button>` : `<button class="negotiate-button" data-short-book="${escapeShortText(item.id)}">View service</button>`}</div></div></article>`);
   shortsGrid.innerHTML = cards.join('') || '<p class="shorts-empty">No product or service shorts yet.</p>';
 }
 
@@ -753,14 +791,28 @@ document.querySelector('#detail-media').addEventListener('click', (event) => {
   document.querySelector('#detail-media .detail-image').src = thumb.dataset.photo;
   document.querySelectorAll('#detail-media .detail-thumb').forEach((item) => item.classList.toggle('active', item === thumb));
 });
-async function shareShort(title) {
-  let link = `${window.location.origin}/#products-shorts`;
+async function shareShort(key, title = 'a short') {
+  let base = `${window.location.origin}/`;
   if (sessionToken && currentUser) {
-    try { const data = await apiRequest('/api/me/referral'); link = data.link + '#products-shorts'; } catch {}
+    try { const data = await apiRequest('/api/me/referral'); base = data.link; } catch {}
   }
+  let link;
+  try { const url = new URL(base, window.location.origin); url.searchParams.set('short', key.replace(':', '-')); link = url.toString(); } catch { link = `${window.location.origin}/?short=${encodeURIComponent(key.replace(':', '-'))}`; }
   const text = `${title} on Unishop, Uyo`;
   if (navigator.share) { navigator.share({ title: 'Unishop', text, url: link }).catch(() => {}); return; }
-  try { await navigator.clipboard.writeText(link); showToast('Link copied.'); } catch { showToast(link); }
+  try { await navigator.clipboard.writeText(link); showToast('Short link copied.'); } catch { showToast(link); }
+}
+
+// A shared link looks like /?short=product-<id>; open that short once it is loaded.
+let sharedShortOpened = false;
+function openSharedShort() {
+  if (sharedShortOpened) return;
+  const wanted = new URLSearchParams(window.location.search).get('short');
+  if (!wanted) { sharedShortOpened = true; return; }
+  const index = shortItems.findIndex((item) => `${item.kind}-${item.id}` === wanted);
+  if (index < 0) return;
+  sharedShortOpened = true;
+  openShortsViewer(index);
 }
 
 // Full-screen shorts feed: swipe or scroll up for the next short; seller account and add to bag sit under each video.
@@ -775,7 +827,7 @@ function closeShortsViewer() {
 function openShortsViewer(startIndex) {
   closeShortsViewer();
   let muted = true;
-  const slide = (item, index) => `<section class="sv-slide" data-index="${index}"><video src="${escapeShortText(item.video)}" poster="${escapeShortText(item.poster)}" loop muted playsinline preload="${Math.abs(index - startIndex) <= 1 ? 'auto' : 'none'}"></video><div class="short-watermark sv-watermark" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""></div><div class="sv-info"><a class="sv-seller" ${item.userId ? `href="/vendor.html?id=${encodeURIComponent(item.userId)}"` : ''}>@${escapeShortText(item.seller)}<small>View account</small></a><h3>${escapeShortText(item.title)}</h3><div class="sv-actions">${item.kind === 'product' ? `<strong>${formatPrice(item.price)}</strong><button type="button" class="add-button" data-sv-add="${escapeShortText(item.id)}">Add to bag</button>` : `<button type="button" class="negotiate-button" data-sv-book="${escapeShortText(item.id)}">View service</button>`}</div></div></section>`;
+  const slide = (item, index) => `<section class="sv-slide" data-index="${index}"><video src="${escapeShortText(item.video)}" poster="${escapeShortText(item.poster)}" loop muted playsinline preload="${Math.abs(index - startIndex) <= 1 ? 'auto' : 'none'}"></video><div class="short-watermark sv-watermark" aria-hidden="true"><img src="/assets/unishop-logo.jpeg" alt=""></div><div class="sv-rail">${likeButton(shortKeyOf(item), 'sv-like')}<button type="button" class="sv-share" data-short-share="${escapeShortText(shortKeyOf(item))}" data-short-title="${escapeShortText(item.title)}" aria-label="Share this short"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M18 16a3 3 0 0 0-2.2 1l-6.6-3.3a3 3 0 0 0 0-1.4L15.800 8a3 3 0 1 0-.8-1.800L8.400 9.500a3 3 0 1 0 0 5l6.600 3.300A3 3 0 1 0 18 16z"/></svg><span>Share</span></button></div><div class="sv-info"><a class="sv-seller" ${item.userId ? `href="/vendor.html?id=${encodeURIComponent(item.userId)}"` : ''}>@${escapeShortText(item.seller)}<small>View account</small></a><h3>${escapeShortText(item.title)}</h3><div class="sv-actions">${item.kind === 'product' ? `<strong>${formatPrice(item.price)}</strong><button type="button" class="add-button" data-sv-add="${escapeShortText(item.id)}">Add to bag</button>` : `<button type="button" class="negotiate-button" data-sv-book="${escapeShortText(item.id)}">View service</button>`}</div></div></section>`;
   shortsViewer = document.createElement('div');
   shortsViewer.className = 'shorts-viewer';
   shortsViewer.setAttribute('role', 'dialog');
@@ -799,6 +851,10 @@ function openShortsViewer(startIndex) {
     if (event.target.closest('.sv-close')) { closeShortsViewer(); return; }
     const sound = event.target.closest('.sv-sound');
     if (sound) { muted = !muted; sound.textContent = muted ? '🔇' : '🔊'; shortsViewer.querySelectorAll('video').forEach((video) => { video.muted = muted; }); return; }
+    const likeNode = event.target.closest('[data-short-like]');
+    if (likeNode) { toggleShortLike(likeNode.dataset.shortLike); return; }
+    const shareNode = event.target.closest('[data-short-share]');
+    if (shareNode) { shareShort(shareNode.dataset.shortShare, shareNode.dataset.shortTitle); return; }
     const add = event.target.closest('[data-sv-add]');
     const book = event.target.closest('[data-sv-book]');
     if (add) {
@@ -821,9 +877,11 @@ document.addEventListener('keydown', (event) => {
 
 shortsGrid.addEventListener('click', (event) => {
   const openNode = event.target.closest('[data-short-open]');
-  if (openNode && !event.target.closest('[data-short-share]')) { openShortsViewer(Number(openNode.dataset.shortOpen)); return; }
+  if (openNode && !event.target.closest('[data-short-share], [data-short-like]')) { openShortsViewer(Number(openNode.dataset.shortOpen)); return; }
+  const likeNode = event.target.closest('[data-short-like]');
+  if (likeNode) { toggleShortLike(likeNode.dataset.shortLike); return; }
   const shareNode = event.target.closest('[data-short-share]');
-  if (shareNode) { shareShort(shareNode.dataset.shortShare); return; }
+  if (shareNode) { shareShort(shareNode.dataset.shortShare, shareNode.dataset.shortTitle); return; }
   const addButton = event.target.closest('[data-short-add]');
   const bookButton = event.target.closest('[data-short-book]');
   if (addButton) addToCart(addButton.dataset.shortAdd);
@@ -1003,6 +1061,7 @@ document.addEventListener('keydown', (event) => {
 renderProducts();
 renderProviders();
 renderShorts();
+loadShortLikes();
 renderCart();
 renderVisionTicker();
 document.querySelectorAll('a[href="#services"], a[href="#providers"]').forEach((link) => link.setAttribute('href', '#products'));
@@ -1016,6 +1075,7 @@ fetch('/api/services').then((response) => response.ok ? response.json() : []).th
     providers.splice(0, providers.length, ...data);
     renderProviders(activeNiche);
     renderShorts();
+    openSharedShort();
     renderVisionTicker();
   }
 }).catch(() => {});
@@ -1028,6 +1088,7 @@ function loadProducts() {
       data.forEach((product) => { if (!known.has(product.id)) products.push({ ...product, badge: 'UYO SHOP' }); });
       renderProducts();
       renderShorts();
+      openSharedShort();
       renderCart();
       renderVisionTicker();
       openProductFromLink();

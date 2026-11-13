@@ -46,7 +46,7 @@ const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED !== 'fal
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
 type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; resetTokenHash?: string; resetExpiresAt?: number; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
-type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[]; conversations: any[]; chatMessages: any[] };
+type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[]; conversations: any[]; chatMessages: any[]; shortLikes?: Record<string, string[]> };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
 const refreshTokenCookieName = 'unishop-refresh';
@@ -317,10 +317,10 @@ if (process.env.NODE_ENV === 'production' && !process.env.MARKETPLACE_DATA_PATH)
 function loadState(): MarketplaceState {
   try {
     const parsed = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [], auditLogs: parsed.auditLogs || [], notifications: parsed.notifications || [], pushSubscriptions: parsed.pushSubscriptions || [], conversations: parsed.conversations || [], chatMessages: parsed.chatMessages || [] };
+    return { users: parsed.users || [], orders: parsed.orders || [], bookings: parsed.bookings || [], serviceListings: parsed.serviceListings || [], sellerProducts: parsed.sellerProducts || [], reviews: parsed.reviews || [], payouts: parsed.payouts || [], auditLogs: parsed.auditLogs || [], notifications: parsed.notifications || [], pushSubscriptions: parsed.pushSubscriptions || [], conversations: parsed.conversations || [], chatMessages: parsed.chatMessages || [], shortLikes: parsed.shortLikes || {} };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    return { users: [], orders: [], bookings: [], serviceListings: [], sellerProducts: [], reviews: [], payouts: [], auditLogs: [], notifications: [], pushSubscriptions: [], conversations: [], chatMessages: [] };
+    return { users: [], orders: [], bookings: [], serviceListings: [], sellerProducts: [], reviews: [], payouts: [], auditLogs: [], notifications: [], pushSubscriptions: [], conversations: [], chatMessages: [], shortLikes: {} };
   }
 }
 
@@ -1909,6 +1909,33 @@ app.patch('/api/profile', (request: Request, response: Response) => {
   auditAction('profile.updated', user.id, { role: user.role });
   response.json({ user: cleanUser(user), complete: hasCompleteBusinessProfile(user) });
 });
+// Likes on shorts: anyone can see the count, a signed-in account likes or unlikes once per short.
+function shortLikeKey(kind: string, id: string) {
+  if (!['product', 'service'].includes(kind) || !/^[\w-]{1,80}$/.test(id)) fail(400, 'Unknown short.');
+  return `${kind}:${id}`;
+}
+app.get('/api/shorts/likes', (request: Request, response: Response) => {
+  const user = authenticatedUser(request);
+  const likes = state.shortLikes || {};
+  const counts: Record<string, number> = {};
+  const mine: string[] = [];
+  Object.entries(likes).forEach(([key, users]) => {
+    if (users.length) counts[key] = users.length;
+    if (user && users.includes(user.id)) mine.push(key);
+  });
+  response.json({ counts, mine });
+});
+app.post('/api/shorts/:kind/:id/like', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  const key = shortLikeKey(String(request.params.kind), String(request.params.id));
+  state.shortLikes = state.shortLikes || {};
+  const users = state.shortLikes[key] || [];
+  const liked = !users.includes(user.id);
+  state.shortLikes[key] = liked ? [...users, user.id] : users.filter((id) => id !== user.id);
+  saveState();
+  response.json({ liked, count: state.shortLikes[key].length });
+});
+
 app.get('/api/me/referral', (request: Request, response: Response) => {
   const user = requireUser(request);
   const code = referralCodeFor(user);
