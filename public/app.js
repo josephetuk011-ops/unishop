@@ -243,7 +243,7 @@ function renderProducts() {
   productGrid.innerHTML = [...groupedNew, ...groupedGoods, ...groupedServices].join('') || `<p class="no-results">${marketMode === 'services' && activeNiche !== 'All' ? `No ${activeNiche.toLowerCase()} listings found yet.` : 'No listings match that search. Try another category.'}</p>`;
   const nicheGrid = document.querySelector('#marketplace-niches');
   nicheGrid.innerHTML = serviceNiches.map(([name, image]) => `<button class="service-niche-card ${activeNiche === name ? 'selected' : ''}" data-service-niche="${name}"><img src="${imageUrl(image, 640)}" alt="${name} service in Uyo" loading="lazy"><span>${name}</span><b>Explore ↗</b></button>`).join('');
-  nicheGrid.hidden = marketMode !== 'services';
+  nicheGrid.hidden = true;
   document.querySelector('.category-pills').hidden = marketMode === 'services';
 }
 
@@ -1084,3 +1084,42 @@ if ('serviceWorker' in navigator) window.addEventListener('load', () => navigato
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
 })();
 loadReward();
+
+// Left menu: sections, service categories and referral live behind the three-line button.
+(() => {
+  const menu = document.querySelector('#site-menu');
+  const backdrop = document.querySelector('#menu-backdrop');
+  const toggle = document.querySelector('#menu-button');
+  if (!menu || !toggle) return;
+  const setOpen = (open) => {
+    menu.classList.toggle('open', open);
+    backdrop.classList.toggle('open', open);
+    menu.setAttribute('aria-hidden', String(!open));
+    toggle.setAttribute('aria-expanded', String(open));
+  };
+  const list = document.querySelector('#menu-niches');
+  list.innerHTML = serviceNiches.map(([name]) => `<button type="button" data-menu-niche="${name}">${name}</button>`).join('');
+  toggle.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
+  backdrop.addEventListener('click', () => setOpen(false));
+  document.querySelector('#menu-close').addEventListener('click', () => setOpen(false));
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setOpen(false); });
+  menu.addEventListener('click', (event) => {
+    const niche = event.target.closest('[data-menu-niche]');
+    if (niche) {
+      marketMode = 'services';
+      selectedCategory = 'All';
+      searchTerm = '';
+      document.querySelector('#search-input').value = '';
+      document.querySelectorAll('[data-nav-mode]').forEach((item) => {
+        const active = item.dataset.navMode === 'services';
+        item.classList.toggle('active', active);
+        if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
+      });
+      renderProviders(niche.dataset.menuNiche);
+      document.querySelector('#products').scrollIntoView({ behavior: 'smooth' });
+      setOpen(false);
+      return;
+    }
+    if (event.target.closest('[data-nav-mode], .referral-button, .sell-link')) setOpen(false);
+  });
+})();
