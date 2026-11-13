@@ -354,6 +354,9 @@ function referralCodeFor(user: User) {
   return code;
 }
 const REFERRAL_REWARD_NAIRA = 100;
+// Goods orders with an items subtotal below this get free delivery; from it up the customer pays DELIVERY_FEE_NAIRA.
+const FREE_DELIVERY_BELOW_NAIRA = 3000;
+const DELIVERY_FEE_NAIRA = 500;
 const REFERRAL_MIN_ORDER_NAIRA = 1000;
 // A referred customer gets 100 naira off their first order; a referrer earns 100 naira off for each referred customer's first paid order.
 function rewardPreview(user: User, subtotalNaira: number) {
@@ -586,7 +589,7 @@ async function completePayment(reference: string, payment: any) {
         buyer.referralCredits = Math.max(0, (buyer.referralCredits || 0) - (order.rewardCredits || 0));
       }
       const referrer = buyer.referredBy ? state.users.find((member) => member.id === buyer.referredBy) : undefined;
-      const qualifyingSubtotal = order.totalNaira + (order.rewardDiscountNaira || 0) - 500 - (order.partFeeNaira || 0);
+      const qualifyingSubtotal = order.totalNaira + (order.rewardDiscountNaira || 0) - ((order.dispatchFeeNaira || 0) + (order.customerDispatchFeeNaira || 0)) - (order.partFeeNaira || 0);
       if (referrer && !buyer.referralRewarded && qualifyingSubtotal >= REFERRAL_MIN_ORDER_NAIRA) {
         buyer.referralRewarded = true;
         referrer.referralCredits = (referrer.referralCredits || 0) + 1;
@@ -2153,6 +2156,7 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
   let address: string;
   let neighbourhood: string;
   let receiptEmail: string;
+  let goodsDeliveryFeeNaira = 0;
   if (bookingId) {
     if (!user || user.role !== 'customer') fail(401, 'Sign in with a customer account to pay for this booking.');
     booking = state.bookings.find((item) => item.id === bookingId && item.userId === user.id && item.paymentStatus !== 'paid');
@@ -2207,14 +2211,16 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
       ...(product.preorder ? { preorder: true, preorderDays: product.preorderDays } : {})
     }));
     settlementLines = sellerSettlementLines(orderItems);
-    totalNaira = orderItems.reduce((sum: number, item: any) => sum + item.lineTotal, 0) + 500;
+    const goodsSubtotalNaira = orderItems.reduce((sum: number, item: any) => sum + item.lineTotal, 0);
+    goodsDeliveryFeeNaira = goodsSubtotalNaira >= FREE_DELIVERY_BELOW_NAIRA ? DELIVERY_FEE_NAIRA : 0;
+    totalNaira = goodsSubtotalNaira + goodsDeliveryFeeNaira;
     customerName = customer.name.trim();
     phone = customer.phone.trim();
     address = delivery.address.trim();
     neighbourhood = delivery.neighbourhood.trim();
     receiptEmail = email.trim().toLowerCase();
   }
-  const reward = user ? rewardPreview(user, totalNaira - 500) : { discountNaira: 0, welcome: false, credits: 0 };
+  const reward = user ? rewardPreview(user, totalNaira - (booking ? 500 : goodsDeliveryFeeNaira)) : { discountNaira: 0, welcome: false, credits: 0 };
   totalNaira -= reward.discountNaira;
   const partFeeNaira = partPayment ? PART_PAYMENT_FEE_NAIRA : 0;
   totalNaira += partFeeNaira;
@@ -2237,10 +2243,10 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     rewardDiscountNaira: reward.discountNaira,
     rewardWelcome: reward.welcome,
     rewardCredits: reward.credits,
-    dispatchFeeNaira: booking ? 0 : 500,
+    dispatchFeeNaira: booking ? 0 : goodsDeliveryFeeNaira,
     customerDispatchFeeNaira: booking ? 500 : 0,
     sellerDispatchContributionNaira: settlementLines.reduce((sum, line) => sum + line.dispatchContributionNaira, 0),
-    riderSettlementNaira: booking ? 0 : 500 + settlementLines.reduce((sum, line) => sum + line.dispatchContributionNaira, 0),
+    riderSettlementNaira: booking ? 0 : goodsDeliveryFeeNaira + settlementLines.reduce((sum, line) => sum + line.dispatchContributionNaira, 0),
     settlementLines,
     settlementStatus: 'held',
     paymentPlan: partPayment ? 'part' : 'full',
