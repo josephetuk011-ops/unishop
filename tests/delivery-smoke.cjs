@@ -37,7 +37,7 @@ const server = app.listen(0, async () => {
   };
   try {
     const stamp = Date.now();
-    const reg = (username, role = 'customer', extra = {}) => send('POST', '/api/auth/register', { name: 'Pay Person', username, email: `${username}@example.com`, password: 'marketplacepassword123', role, ...extra });
+    const reg = (username, role = 'customer', extra = {}) => send('POST', '/api/auth/register', { name: 'Pay Person', username, email: `${username}@example.com`, password: 'marketplacepassword123', role, acceptTerms: true, ...extra });
     const sellerReg = await reg(`partsel${stamp}`, 'seller', { businessName: 'Part Store' });
     assert.equal((await send('POST', '/api/profile/nin', { nin: '12345678904' }, sellerReg.data.token)).status, 200);
     assert.equal((await send('PATCH', '/api/profile', { name: 'Part Seller', businessName: 'Part Store', position: 'Owner', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'A local shop sharing practical goods with customers around Uyo.', profileImage: '/uploads/a.jpg', ceoImage: '/uploads/b.jpg' }, sellerReg.data.token)).status, 200);

@@ -384,6 +384,13 @@ async function refreshDashboard() {
     dashboardData = await api('/api/dashboard');
     if (!window.__hashHandled) { window.__hashHandled = true; if (location.hash.startsWith('#messages')) selectedView = 'messages'; }
     if (dashboardData.role === 'admin') return endSession();
+    if (['seller', 'provider'].includes(dashboardData.role) && !dashboardData.user.termsAcceptedAt) {
+      const agreed = await window.showVendorTerms(dashboardData.role, 'Sign out');
+      if (!agreed) return endSession();
+      const accepted = await api('/api/me/accept-terms', { method: 'POST', body: JSON.stringify({ accept: true }) });
+      dashboardData.user = accepted.user;
+      localStorage.setItem('unishop-user', JSON.stringify(accepted.user));
+    }
     if (['seller', 'provider', 'dispatch'].includes(dashboardData.role) && !businessProfileComplete(dashboardData.user)) selectedView = 'profile';
   } catch (error) {
     if (error.sessionExpired || !token) return endSession();

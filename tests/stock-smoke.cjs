@@ -33,7 +33,7 @@ const server = app.listen(0, async () => {
   };
   try {
     const stamp = Date.now();
-    const seller = await send('POST', '/api/auth/register', { name: 'Stock Seller', username: `stk${stamp}`, email: `stk${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', businessName: 'Stock Shop' });
+    const seller = await send('POST', '/api/auth/register', { name: 'Stock Seller', username: `stk${stamp}`, email: `stk${stamp}@example.com`, password: 'marketplacepassword123', role: 'seller', acceptTerms: true, businessName: 'Stock Shop' });
     const st = seller.data.token;
     assert.equal((await send('PATCH', '/api/profile', { name: 'Stock Seller', businessName: 'Stock Shop', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'A local shop selling clothes around Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/ceo.jpg' }, st)).status, 200);
     const cats = (await send('GET', '/api/product-categories')).data.groups;

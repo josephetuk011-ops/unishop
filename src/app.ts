@@ -46,7 +46,7 @@ const validProductCategories = new Set([...productCategoryGroups.flatMap((entry)
 const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED !== 'false';
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; resetTokenHash?: string; resetExpiresAt?: number; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; resetTokenHash?: string; resetExpiresAt?: number; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; termsAcceptedAt?: string; termsVersion?: string; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[]; conversations: any[]; chatMessages: any[]; shortLikes?: Record<string, string[]> };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -66,6 +66,7 @@ const corporateFrontendDomains = [
     'https://127.0.0.1:3001'
   ])
 ].filter(Boolean) as string[];
+const VENDOR_TERMS_VERSION = '2026-11';
 const registerSchema = z.object({
   name: z.string().trim().min(2).max(100),
   username: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9._-]+$/),
@@ -74,6 +75,7 @@ const registerSchema = z.object({
   role: z.enum(registrationRoles),
   businessName: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(2).max(120).optional()),
   niche: z.string().trim().max(80).optional(),
+  acceptTerms: z.boolean().optional(),
   ref: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6,12}$/).optional().catch(undefined)
 });
 const loginSchema = z.object({
@@ -429,7 +431,7 @@ function asyncRoute(handler: (request: Request, response: Response) => Promise<u
 }
 
 function cleanUser(user: User) {
-  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, ceoImage: user.ceoImage, teamImages: user.teamImages, niche: user.niche, ninLast4: user.ninLast4, ninStatus: user.ninLast4 ? (user.ninStatus || 'pending') : undefined, ninVerifiedAt: user.ninVerifiedAt, ninNote: user.ninNote, ninRequired: ninEnabled() && requiresNin(user.role), createdAt: user.createdAt };
+  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, ceoImage: user.ceoImage, teamImages: user.teamImages, niche: user.niche, ninLast4: user.ninLast4, ninStatus: user.ninLast4 ? (user.ninStatus || 'pending') : undefined, ninVerifiedAt: user.ninVerifiedAt, ninNote: user.ninNote, termsAcceptedAt: user.termsAcceptedAt, ninRequired: ninEnabled() && requiresNin(user.role), createdAt: user.createdAt };
 }
 
 function publicBusinessProfile(userId: string | undefined) {
@@ -1450,6 +1452,7 @@ app.get('/api/dashboard', (request: Request, response: Response) => {
 app.post('/api/provider/listings', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (user.role !== 'provider') fail(403, 'Use a service provider account to create a service listing.');
+  if (!user.termsAcceptedAt) fail(403, 'Agree to the Unishop vendor terms before listing.');
   if (!hasCompleteBusinessProfile(user)) fail(409, 'Complete your public business profile before publishing a service.');
   const { niche: rawNiche, title, description, price, portfolio, video, videoDuration } = request.body || {};
   const niche = currentNiche(rawNiche);
@@ -1524,6 +1527,7 @@ function availableFor(product: any, size?: string) {
 app.post('/api/seller/products', (request: Request, response: Response) => {
   const user = requireUser(request);
   if (user.role !== 'seller') fail(403, 'Use a seller account to add a product.');
+  if (!user.termsAcceptedAt) fail(403, 'Agree to the Unishop vendor terms before listing.');
   if (!hasCompleteBusinessProfile(user)) fail(409, 'Complete your public business profile before publishing a product.');
   const { name, category, description, price, image, images, video, videoDuration } = request.body || {};
   const stockFields = parseStock(request.body);
@@ -1712,10 +1716,22 @@ app.patch('/api/dispatch/jobs/:reference', (request: Request, response: Response
   response.json({ order: safeOrder(order) });
 });
 
+app.post('/api/me/accept-terms', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  if (!['seller', 'provider'].includes(user.role)) fail(400, 'Only vendors and service providers need to agree to these terms.');
+  if (request.body?.accept !== true) fail(400, 'You must agree to the terms to continue.');
+  user.termsAcceptedAt = new Date().toISOString();
+  user.termsVersion = VENDOR_TERMS_VERSION;
+  saveState();
+  auditAction('terms.accepted', user.id, { version: VENDOR_TERMS_VERSION });
+  response.json({ user: cleanUser(user) });
+});
+
 app.post('/api/auth/register', asyncRoute(async (request: Request, response: Response) => {
   const parsed = registerSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, describeIssues(parsed.error));
-  const { name, username, email, password, role, businessName, niche, ref } = parsed.data;
+  const { name, username, email, password, role, businessName, niche, ref, acceptTerms } = parsed.data;
+  if (['seller', 'provider'].includes(role) && acceptTerms !== true) fail(400, 'You must agree to the Unishop vendor terms to create a vendor or service provider account.');
   if (role === 'dispatch' && !dispatchSignInEnabled()) fail(403, 'Delivery team sign-up is paused.');
   const sanitizedName = sanitizeText(name, '');
   const sanitizedUsername = sanitizeText(username, '').toLowerCase();
@@ -1739,6 +1755,7 @@ app.post('/api/auth/register', asyncRoute(async (request: Request, response: Res
     passwordHash: await bcrypt.hash(password, 12),
     createdAt: new Date().toISOString(),
     emailVerified: autoVerifyEmail,
+    ...(['seller', 'provider'].includes(role) ? { termsAcceptedAt: new Date().toISOString(), termsVersion: VENDOR_TERMS_VERSION } : {}),
     otpCode,
     otpExpiresAt: autoVerifyEmail ? undefined : Date.now() + 10 * 60 * 1000
   };

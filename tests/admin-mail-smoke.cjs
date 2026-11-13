@@ -34,7 +34,7 @@ const server = app.listen(0, async () => {
     const ids = [];
     for (const role of ['customer', 'seller']) {
       const username = `${role}${stamp}`;
-      const reg = await call('POST', '/api/auth/register', { name: `Mail ${role}`, username, email: `${username}@example.com`, password: 'longpassword123', role, ...(role === 'seller' ? { businessName: 'Mail Shop' } : {}) });
+      const reg = await call('POST', '/api/auth/register', { name: `Mail ${role}`, username, email: `${username}@example.com`, password: 'longpassword123', role, acceptTerms: true, ...(role === 'seller' ? { businessName: 'Mail Shop' } : {}) });
       assert.ok([200, 201].includes(reg.status), JSON.stringify(reg.data));
       ids.push({ id: reg.data.user.id, email: `${username}@example.com` });
     }
