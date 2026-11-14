@@ -46,7 +46,7 @@ const validProductCategories = new Set([...productCategoryGroups.flatMap((entry)
 const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED !== 'false';
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; resetTokenHash?: string; resetExpiresAt?: number; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; termsAcceptedAt?: string; termsVersion?: string; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; resetTokenHash?: string; resetExpiresAt?: number; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; termsAcceptedAt?: string; termsVersion?: string; phone?: string; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[]; conversations: any[]; chatMessages: any[]; shortLikes?: Record<string, string[]>; sentMails?: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -431,7 +431,7 @@ function asyncRoute(handler: (request: Request, response: Response) => Promise<u
 }
 
 function cleanUser(user: User) {
-  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, ceoImage: user.ceoImage, teamImages: user.teamImages, niche: user.niche, ninLast4: user.ninLast4, ninStatus: user.ninLast4 ? (user.ninStatus || 'pending') : undefined, ninVerifiedAt: user.ninVerifiedAt, ninNote: user.ninNote, termsAcceptedAt: user.termsAcceptedAt, ninRequired: ninEnabled() && requiresNin(user.role), createdAt: user.createdAt };
+  return { id: user.id, name: user.name, username: user.username || legacyUsername(user), email: user.email, role: user.role, businessName: user.businessName, position: user.position, placeOfOperation: user.placeOfOperation, aboutMe: user.aboutMe, profileImage: user.profileImage, ceoImage: user.ceoImage, teamImages: user.teamImages, niche: user.niche, ninLast4: user.ninLast4, ninStatus: user.ninLast4 ? (user.ninStatus || 'pending') : undefined, ninVerifiedAt: user.ninVerifiedAt, ninNote: user.ninNote, termsAcceptedAt: user.termsAcceptedAt, phone: user.phone, ninRequired: ninEnabled() && requiresNin(user.role), createdAt: user.createdAt };
 }
 
 function publicBusinessProfile(userId: string | undefined) {
@@ -504,9 +504,33 @@ function trackingOf(order: any) {
   return { status, steps: trackingSteps.map((step, index) => ({ key: step.key, label: step.label, done: index <= reached, at: step.key === 'awaiting-pickup' ? (events.find((event) => event.status === step.key)?.at || order.paidAt) : events.find((event) => event.status === step.key)?.at })) };
 }
 
+// Product and service pictures shown beside order lines. Bare ids are stock photos on Unsplash.
+const resolveImage = (value?: string) => !value ? '' : value.startsWith('/') || /^https?:\/\//.test(value) ? value : `https://images.unsplash.com/${value}?auto=format&fit=crop&w=400&q=70`;
+// Contact details the admin sees for a vendor, provider or customer. Customers only give a phone number at checkout.
+function latestPhoneFor(userId?: string) {
+  if (!userId) return '';
+  const order = state.orders.filter((entry) => entry.userId === userId && entry.phone).sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0))[0];
+  return order?.phone || '';
+}
+function contactOf(user?: User) {
+  if (!user) return { name: '', businessName: '', email: '', phone: '', place: '' };
+  return { name: user.name, businessName: user.businessName || '', email: user.email, phone: user.phone || latestPhoneFor(user.id), place: user.placeOfOperation || '' };
+}
+function bookingImage(bookingId?: string) {
+  const booking = state.bookings.find((item) => item.id === bookingId);
+  const listing = booking ? state.serviceListings.find((item) => item.id === booking.providerId) : undefined;
+  return resolveImage(listing?.portfolio?.[0]);
+}
+function orderItemImage(order: any, item: any) {
+  if (item.image) return resolveImage(item.image);
+  if (order.type === 'service') return bookingImage(order.bookingId);
+  const product = state.sellerProducts.find((entry) => entry.id === item.productId) || catalog.find((entry) => entry.id === item.productId);
+  return resolveImage(product?.image);
+}
+
 function safeOrder(order: any) {
   const { email, phone, address, customerName, userId, authorizationUrl, accessCode, balanceReferences, balanceKobo, settlementLines, sellerDispatchContributionNaira, riderSettlementNaira, ...publicOrder } = order;
-  return { ...publicOrder, tracking: order.type === 'service' ? undefined : trackingOf(order), items: publicOrder.items.map(({ sellerUserId, ...item }: any) => item) };
+  return { ...publicOrder, tracking: order.type === 'service' ? undefined : trackingOf(order), items: publicOrder.items.map(({ sellerUserId, ...item }: any) => ({ ...item, image: orderItemImage(order, item) })) };
 }
 
 async function paystackRequest(endpoint: string, body?: Record<string, unknown>) {
@@ -1030,14 +1054,16 @@ app.get('/api/admin/records', (request, response) => {
   const search = typeof request.query.search === 'string' ? request.query.search.trim().toLowerCase().slice(0, 100) : '';
   const userById = new Map(state.users.map((user) => [user.id, user]));
   const records: any[] = kind === 'users'
-    ? state.users.filter((user) => user.role !== 'admin').map((user) => ({ ...cleanUser(user), suspendedAt: user.suspendedAt, suspensionReason: user.suspensionReason }))
+    ? state.users.filter((user) => user.role !== 'admin').map((user) => ({ ...cleanUser(user), phone: user.phone || latestPhoneFor(user.id), placeOfOperation: user.placeOfOperation, suspendedAt: user.suspendedAt, suspensionReason: user.suspensionReason }))
     : kind === 'orders'
       ? state.orders.map((order) => {
         const customer = userById.get(order.userId);
-        return { ...safeOrder(order), customerName: order.customerName || customer?.name || 'Guest', customerEmail: order.email || customer?.email || '', customerPhone: order.phone || '', deliveryAddress: order.address || '', customerId: order.userId };
+        const sellerIds = [...new Set<string>((order.items || []).map((item: any) => item.sellerUserId).filter(Boolean))];
+        const sellers = sellerIds.map((id) => ({ id, ...contactOf(userById.get(id)) }));
+        return { ...safeOrder(order), customerName: order.customerName || customer?.name || 'Guest', customerEmail: order.email || customer?.email || '', customerPhone: order.phone || latestPhoneFor(order.userId), deliveryAddress: order.address || '', customerId: order.userId, sellers };
       })
       : kind === 'bookings'
-        ? state.bookings.map((booking) => ({ ...booking, customerName: userById.get(booking.userId)?.name || 'Customer', customerEmail: userById.get(booking.userId)?.email || '', providerName: userById.get(booking.providerUserId)?.name || booking.provider || 'Provider' }))
+        ? state.bookings.map((booking) => ({ ...booking, image: bookingImage(booking.id), customerName: userById.get(booking.userId)?.name || 'Customer', customerEmail: userById.get(booking.userId)?.email || '', customerPhone: latestPhoneFor(booking.userId), providerName: userById.get(booking.providerUserId)?.name || booking.provider || 'Provider', provider: contactOf(userById.get(booking.providerUserId)) }))
         : kind === 'listings'
           ? [
             ...state.sellerProducts.map((product) => ({ ...product, listingType: 'Product', ownerId: product.userId, ownerName: userById.get(product.userId)?.name || product.seller || 'Seller', ownerRole: 'seller', isSuspended: isAccountSuspended(product.userId) })),
@@ -1372,13 +1398,13 @@ app.get('/api/dashboard', (request: Request, response: Response) => {
     const bookings = state.bookings.filter((booking) => booking.providerUserId === user.id || listingIds.has(booking.providerId));
     const earnings = bookings.filter((booking) => booking.paymentStatus === 'paid').reduce((sum, booking) => sum + (booking.amountNaira || 0), 0);
     const reviews = state.reviews.filter((review) => listingIds.has(review.listingId));
-    return response.json({ role: user.role, user: cleanUser(user), listings, bookings, reviews, ...payoutMetrics, metrics: { listingCount: listings.length, bookingCount: bookings.length, rating: reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0, grossEarnings: earnings, ...payoutMetrics }, niches: serviceNiches });
+    return response.json({ role: user.role, user: cleanUser(user), listings, bookings: bookings.map((booking) => ({ ...booking, image: bookingImage(booking.id) })), reviews, ...payoutMetrics, metrics: { listingCount: listings.length, bookingCount: bookings.length, rating: reviews.length ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length : 0, grossEarnings: earnings, ...payoutMetrics }, niches: serviceNiches });
   }
   if (user.role === 'seller') {
     const products = state.sellerProducts.filter((product) => product.userId === user.id);
     const orders = state.orders.filter((order) => order.paymentStatus === 'paid' && order.items.some((item: any) => item.sellerUserId === user.id));
     const grossSales = orders.reduce((sum, order) => sum + order.items.filter((item: any) => item.sellerUserId === user.id).reduce((sub: number, item: any) => sub + item.lineTotal, 0), 0);
-    return response.json({ role: user.role, user: cleanUser(user), products, orders: orders.map(safeOrder), ...payoutMetrics, metrics: { productCount: products.length, orderCount: orders.length, grossSales, ...payoutMetrics } });
+    return response.json({ role: user.role, user: cleanUser(user), products, orders: orders.map((order) => ({ ...safeOrder({ ...order, items: order.items.filter((item: any) => item.sellerUserId === user.id) }), yourTotalNaira: order.items.filter((item: any) => item.sellerUserId === user.id).reduce((sub: number, item: any) => sub + item.lineTotal, 0) })), ...payoutMetrics, metrics: { productCount: products.length, orderCount: orders.length, grossSales, ...payoutMetrics } });
   }
   if (user.role === 'dispatch') {
     const jobs = state.orders.filter((order) => order.type !== 'service' && order.paymentStatus === 'paid' && (!order.dispatchRiderId || order.dispatchRiderId === user.id));
@@ -1948,7 +1974,8 @@ app.patch('/api/profile', (request: Request, response: Response) => {
     aboutMe: z.string().trim().min(20).max(1000),
     profileImage: z.string().refine((v) => isMediaRef(v, 'image')),
     ceoImage: z.string().refine((v) => isMediaRef(v, 'image'), 'Upload a photo of the owner or CEO.'),
-    teamImages: z.array(z.string().refine((v) => isMediaRef(v, 'image'))).max(6).optional()
+    teamImages: z.array(z.string().refine((v) => isMediaRef(v, 'image'))).max(6).optional(),
+    phone: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().regex(/^[0-9+()\s-]{7,20}$/, 'Enter a valid phone number.').optional())
   });
   const parsed = profileSchema.safeParse(request.body || {});
   if (!parsed.success) fail(400, describeIssues(parsed.error));
@@ -1960,6 +1987,7 @@ app.patch('/api/profile', (request: Request, response: Response) => {
   user.profileImage = parsed.data.profileImage;
   user.ceoImage = parsed.data.ceoImage;
   user.teamImages = parsed.data.teamImages ?? user.teamImages ?? [];
+  if (parsed.data.phone) user.phone = parsed.data.phone;
   saveState();
   auditAction('profile.updated', user.id, { role: user.role });
   response.json({ user: cleanUser(user), complete: hasCompleteBusinessProfile(user) });
@@ -2284,6 +2312,7 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
       productId: product.id,
       size,
       name: product.name,
+      image: resolveImage(product.image),
       seller: product.seller || product.businessName,
       sellerUserId: product.userId,
       unitPrice: product.price,
