@@ -101,7 +101,7 @@ function moneyNote() {
 }
 function payoutPanel() {
   const account = dashboardData.payoutAccount;
-  const bank = account ? `<p class="payout-account-summary">${escapeHtml(account.accountName)} · ${escapeHtml(account.bankName)} · •••• ${escapeHtml(account.accountLast4)}</p>` : '<p class="payout-account-summary">No bank account saved.</p>';
+  const bank = account ? `<p class="payout-account-summary">${escapeHtml(account.accountName)} · ${escapeHtml(account.bankName)} · •••• ${escapeHtml(account.accountLast4)}</p><p class="earnings-note">${account.sharedWithAdmin ? 'Saved and visible to Unishop admin, who can pay you directly.' : 'Re-enter your account number below and save it so Unishop admin can pay you directly.'}</p>` : '<p class="payout-account-summary">No bank account saved.</p>';
   const rows = (dashboardData.payouts || []).map((payout) => `<tr><td><strong>${escapeHtml(payout.reference)}</strong><br>${formatDate(payout.createdAt)}</td><td>${formatMoney(payout.amountNaira)}</td><td><span class="status-pill ${escapeHtml(payout.status)}">${escapeHtml(payout.status)}</span>${payout.status === 'needs-review' ? `<br><button class="quiet-button" data-retry-payout="${escapeHtml(payout.reference)}">Retry transfer</button>` : ''}</td></tr>`);
   return `<div id="notification-panel">${panel('Notifications', '<div class="empty-state">Loading…</div>')}</div>${panel('Withdrawable balance', `<div class="payout-balance">${formatMoney(dashboardData.availableBalanceNaira || 0)}</div><p class="earnings-note">Commission: 5% below ₦10,000, 10% from ₦10,000 to ₦29,999, and 15% from ₦30,000. Rates apply to your subtotal before dispatch fees. Sellers contribute ₦500 per seller; service providers contribute ₦500. Product riders receive the buyer’s ₦500 plus seller contributions.</p>${bank}<form class="form-grid payout-form" id="payout-account-form"><label class="form-field">Bank<select name="bankCode" id="payout-bank" required><option value="">Loading banks…</option></select></label><label class="form-field">Account number<input name="accountNumber" inputmode="numeric" autocomplete="off" pattern="[0-9]{10}" minlength="10" maxlength="10" required></label><div class="form-actions"><button class="secondary-button" type="submit">${account ? 'Update bank account' : 'Verify bank account'}</button></div></form><form class="form-grid payout-form" id="payout-withdraw-form"><label class="form-field">Withdrawal amount (NGN)<input name="amountNaira" type="number" min="100" max="${Number(dashboardData.availableBalanceNaira || 0)}" step="1" required></label><div class="form-actions"><button class="primary-button" type="submit" ${!account || !(dashboardData.availableBalanceNaira > 0) ? 'disabled' : ''}>Withdraw</button></div></form>`, '')}${panel('Withdrawal history', table(['Reference', 'Amount', 'Status'], rows, 'No withdrawals yet.'))}`;
 }
@@ -264,7 +264,7 @@ function profileForm() {
       <label class="form-field">Your full name<input name="name" required minlength="2" maxlength="100" value="${escapeHtml(user.name)}" autocomplete="name"></label>
       <label class="form-field">Business or brand name<input name="businessName" required minlength="2" maxlength="120" value="${escapeHtml(user.businessName || '')}" placeholder="The name customers will see"></label>
       <label class="form-field">Your position<input name="position" required minlength="2" maxlength="80" value="${escapeHtml(user.position || '')}" placeholder="e.g. Founder, Store manager, Lead stylist"></label>
-      <label class="form-field">Phone number (shared with Unishop admin only)<input name="phone" type="tel" maxlength="20" pattern="[0-9+()\s\-]{7,20}" value="${escapeHtml(user.phone || '')}" placeholder="e.g. 0803 000 0000" autocomplete="tel"></label>
+      <label class="form-field">Phone number (Unishop uses it to reach you about orders and payments)<input name="phone" type="tel" ${['seller', 'provider'].includes(user.role) ? 'required' : ''} maxlength="20" pattern="[0-9+()\s\-]{7,20}" value="${escapeHtml(user.phone || '')}" placeholder="e.g. 0803 000 0000" autocomplete="tel"></label>
       <label class="form-field">Place of operation<input name="placeOfOperation" required minlength="2" maxlength="120" value="${escapeHtml(user.placeOfOperation || '')}" placeholder="e.g. Ewet Housing, Uyo"></label>
       <label class="form-field full">About you and your business<textarea name="aboutMe" required minlength="20" maxlength="1000" rows="5" placeholder="Tell customers what you do, what makes your business special and the areas you serve.">${escapeHtml(user.aboutMe || '')}</textarea><span class="form-help">This introduction is shown on your public brand profile.</span></label>
       <label class="form-field full profile-photo-field">Profile or brand photo<input name="profileImage" type="file" accept="image/jpeg,image/png,image/webp" ${user.profileImage ? '' : 'required'}><span class="form-help">JPG, PNG or WebP · maximum 5 MB. This image appears with your public profile.</span>${image}</label>
@@ -283,7 +283,7 @@ function ninPanel(user) {
   return `<div class="panel-gap"><section class="panel" id="nin-panel"><header class="panel-heading"><h3>Identity verification (NIN)</h3><b style="color:${colors[status]}">${labels[status]}</b></header><div class="panel-body"><p class="earnings-note">${escapeHtml(note)}</p>${form}</div></section></div>`;
 }
 function businessProfileComplete(user) {
-  return Boolean(user.name && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && user.ceoImage && (!user.ninRequired || (user.ninLast4 && user.ninStatus !== 'failed')));
+  return Boolean(user.name && (!['seller', 'provider'].includes(user.role) || user.phone) && user.businessName && user.position && user.placeOfOperation && user.aboutMe && user.profileImage && user.ceoImage && (!user.ninRequired || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
 function dispatchDashboard() {
   const { jobs, metrics, user } = dashboardData;
@@ -611,9 +611,9 @@ document.addEventListener('click', async (event) => {
     payService.disabled = true;
     try {
       const booking = (dashboardData.bookings || []).find((item) => item.id === payService.dataset.payService);
-      const plan = await window.UnishopPayPlan.choose(((booking && booking.amountNaira) || 0) + 500);
+      const plan = await window.UnishopPayPlan.choose(((booking && booking.amountNaira) || 0) + 500, { askPhone: true, phone: dashboardData.user && dashboardData.user.phone });
       if (!plan) { payService.disabled = false; return; }
-      const payment = await api('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: payService.dataset.payService, paymentPlan: plan }) });
+      const payment = await api('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: payService.dataset.payService, paymentPlan: plan, customer: { phone: window.UnishopPayPlan.phone } }) });
       window.location.assign(payment.authorizationUrl);
     } catch (error) { notify(error.message); payService.disabled = false; }
   }
@@ -725,7 +725,7 @@ document.addEventListener('submit', async (event) => {
     try {
       await api('/api/payout/account', { method: 'POST', body: JSON.stringify({ bankCode: form.elements.bankCode.value, accountNumber: form.elements.accountNumber.value }) });
       await refreshDashboard();
-      notify('Your bank account was verified with Paystack.');
+      notify('Your bank account was verified and saved. Unishop admin can now pay you directly.');
     } catch (error) { notify(error.message); }
     finally { button.disabled = false; }
   }

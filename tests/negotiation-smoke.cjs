@@ -29,7 +29,7 @@ const server = app.listen(0, async () => {
   try {
     const stamp = Date.now();
     const provider = await send('POST', '/api/auth/register', { name: 'Pro Vider', username: `pro${stamp}`, email: `pro${stamp}@example.com`, password, role: 'provider', acceptTerms: true, businessName: 'Pro Studio', niche: 'Barbing' });
-    await send('PATCH', '/api/profile', { name: 'Pro Vider', businessName: 'Pro Studio', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'Barbing appointments and home visits for customers across Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/c.jpg' }, provider.data.token);
+    await send('PATCH', '/api/profile', { name: 'Pro Vider', businessName: 'Pro Studio', position: 'Owner', phone: '08030000000', placeOfOperation: 'Uyo', aboutMe: 'Barbing appointments and home visits for customers across Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/c.jpg' }, provider.data.token);
     const listing = (await send('POST', '/api/provider/listings', { niche: 'Barbing', title: 'Home barbing', description: 'Barbing with home visits in Uyo.', portfolio: ['/uploads/w.jpg'] }, provider.data.token)).data.listing;
     assert.equal(listing.price, null);
     const services = (await send('GET', '/api/services')).data;

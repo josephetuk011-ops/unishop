@@ -133,9 +133,9 @@
         const button = form.querySelector('button'); button.disabled = true;
         try {
           const booked = await call(`/api/chats/${id}/book`, { method: 'POST', body: JSON.stringify({ neighbourhood: form.elements.neighbourhood.value, time: form.elements.time.value }) });
-          const plan = await window.UnishopPayPlan.choose(booked.booking.amountNaira + 500);
+          const plan = await window.UnishopPayPlan.choose(booked.booking.amountNaira + 500, { askPhone: true });
           if (!plan) { toast('Your booking is saved. Pay from your dashboard when you are ready.'); button.disabled = false; return; }
-          const payment = await call('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: booked.booking.id, paymentPlan: plan }) });
+          const payment = await call('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: booked.booking.id, paymentPlan: plan, customer: { phone: window.UnishopPayPlan.phone } }) });
           window.location.assign(payment.authorizationUrl);
         } catch (error) { toast(error.message); button.disabled = false; }
       }

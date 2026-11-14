@@ -71,7 +71,7 @@ cloudinary.listen(0, () => {
       assert.equal(received[1].url, '/v1_1/democloud/video/upload');
       assert.ok(received[1].signatureOk);
 
-      assert.equal((await send('PATCH', '/api/profile', { name: 'Cloud Seller', businessName: 'Cloud Shop', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'A local shop selling clothes around Uyo.', profileImage: photo.data.images[0], ceoImage: photo.data.images[0] }, token)).status, 200);
+      assert.equal((await send('PATCH', '/api/profile', { name: 'Cloud Seller', businessName: 'Cloud Shop', position: 'Owner', phone: '08030000000', placeOfOperation: 'Uyo', aboutMe: 'A local shop selling clothes around Uyo.', profileImage: photo.data.images[0], ceoImage: photo.data.images[0] }, token)).status, 200);
       const product = await send('POST', '/api/seller/products', { name: 'Cloud shirt', category: 'Shoes and sandals', description: 'A nice shirt for you.', price: 5000, images: [photo.data.images[0]], video: video.data.video, videoDuration: 5, quantity: 2 }, token);
       assert.equal(product.status, 201, JSON.stringify(product.data));
       assert.equal(product.data.product.images[0], photo.data.images[0]);

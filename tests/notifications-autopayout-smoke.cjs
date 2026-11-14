@@ -10,6 +10,7 @@ process.env.PAYSTACK_SECRET_KEY = 'sk_test_mock_only';
 process.env.JWT_SECRET = 'local-integration-signing-secret';
 process.env.RESEND_API_KEY = 're_mock';
 process.env.ADMIN_EMAIL = 'admin@example.com';
+process.env.ADMIN_PASSWORD = 'admin-password-for-tests';
 process.env.ADMIN_NTFY_TOPIC = 'unishop-admin-test';
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'unishop-notify-'));
 process.env.MARKETPLACE_DATA_PATH = path.join(dir, 'marketplace.json');
@@ -46,7 +47,7 @@ const server = app.listen(0, async () => {
   try {
     const provider = await send('POST', '/api/auth/register', { name: 'Pro Vider', username: 'notifprovider', email: 'provider@example.com', password, role: 'provider', acceptTerms: true, businessName: 'Notif Barbing', niche: 'Barbing' });
     await send('POST', '/api/profile/nin', { nin: '12345678903' }, provider.data.token);
-    await send('PATCH', '/api/profile', { name: 'Pro Vider', businessName: 'Notif Barbing', position: 'Owner', placeOfOperation: 'Uyo', aboutMe: 'Barbing appointments and home visits for customers across Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/ceo.jpg' }, provider.data.token);
+    await send('PATCH', '/api/profile', { name: 'Pro Vider', businessName: 'Notif Barbing', position: 'Owner', phone: '08030000000', placeOfOperation: 'Uyo', aboutMe: 'Barbing appointments and home visits for customers across Uyo.', profileImage: '/uploads/p.jpg', ceoImage: '/uploads/ceo.jpg' }, provider.data.token);
     const listing = await send('POST', '/api/provider/listings', { niche: 'Barbing', title: 'Fades', description: 'Barbing service with home visits in Uyo.', portfolio: ['/uploads/x.jpg'] }, provider.data.token);
     const customer = await send('POST', '/api/auth/register', { name: 'Cus Tomer', username: 'notifcustomer', email: 'buyer@example.com', password, role: 'customer' });
 
@@ -74,7 +75,7 @@ const server = app.listen(0, async () => {
     assert(phoneAlerts.length >= 1);
 
     // Payment notifies again.
-    const pay = await send('POST', '/api/payments/initialize', { bookingId: booking.data.booking.id }, customer.data.token);
+    const pay = await send('POST', '/api/payments/initialize', { bookingId: booking.data.booking.id, customer: { phone: '08051112222' } }, customer.data.token);
     await send('GET', `/api/payments/verify/${pay.data.reference}`);
     await settle();
     inbox = await send('GET', '/api/notifications', undefined, provider.data.token);
@@ -93,6 +94,14 @@ const server = app.listen(0, async () => {
     assert.equal(dashboard.data.payouts[0].status, 'success');
     inbox = await send('GET', '/api/notifications', undefined, provider.data.token);
     assert(inbox.data.notifications.some((item) => item.title === 'Payment on its way'));
+
+    // Admin can read the provider's phone and full bank details from the bookings list.
+    const adminLogin = await send('POST', '/api/admin/login', { password: 'admin-password-for-tests' });
+    const adminBookings = await send('GET', '/api/admin/records?kind=bookings', undefined, adminLogin.data.token);
+    const seen = adminBookings.data.records[0].provider;
+    assert.equal(seen.phone, '08030000000');
+    assert.equal(seen.payout.accountNumber, '0123456789');
+    assert.equal(adminBookings.data.records[0].customerPhone, '08051112222');
 
     // Push subscription validation.
     assert.equal((await send('POST', '/api/notifications/subscribe', { subscription: { endpoint: 'https://push.example/1', keys: { p256dh: 'a', auth: 'b' } } }, provider.data.token)).status, 503);
