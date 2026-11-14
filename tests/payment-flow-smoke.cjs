@@ -242,6 +242,9 @@ const server = app.listen(0, async () => {
     assert.equal((await send('GET', '/api/dashboard', undefined, rider.data.token)).data.availableBalanceNaira, 1000);
     const sellerReleased = await send('GET', '/api/dashboard', undefined, seller.data.token);
     assert.equal(sellerReleased.data.availableBalanceNaira, 10610);
+    const sellerOrder = sellerReleased.data.orders[0];
+    assert.ok(sellerOrder && sellerOrder.items.length && sellerOrder.items.every((item) => item.name && item.image), 'seller order lines show product name and picture');
+    assert.equal(typeof sellerOrder.yourTotalNaira, 'number');
 
     const highPriceProduct = await send('POST', '/api/seller/products', {
       name: 'High tier test item', category: 'Home', description: 'Commission tier test product.', price: 40000, image: uploadedImage.data.images[0]

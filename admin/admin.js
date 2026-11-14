@@ -122,20 +122,31 @@ function trackingCell(record) {
   return `${status(label)}${record.orderStatus === 'completed' ? '' : next ? `<br><button class="table-action" data-track-order="${escapeHtml(record.reference)}" data-track-status="${next[0]}">${next[1]}</button>` : ''}`;
 }
 
+function thumb(src, alt) {
+  return src ? `<img class="thumb" src="${escapeHtml(src)}" alt="${escapeHtml(alt || '')}" loading="lazy">` : '<span class="thumb thumb-empty"></span>';
+}
+function contactLines(contact) {
+  if (!contact) return '';
+  const phone = contact.phone ? `<a href="tel:${escapeHtml(contact.phone)}">${escapeHtml(contact.phone)}</a>` : '<span class="muted">no phone</span>';
+  const email = contact.email ? `<a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a>` : '';
+  return `${phone}${email ? `<br>${email}` : ''}`;
+}
 function recordCells(record) {
   if (currentView === 'users') {
     const accountStatus = record.suspendedAt ? status('suspended') : status('active');
     const action = ['seller', 'provider', 'customer'].includes(record.role)
       ? `<button class="table-action ${record.suspendedAt ? 'restore' : ''}" data-moderate-user="${escapeHtml(record.id)}" data-suspended="${Boolean(record.suspendedAt)}">${record.suspendedAt ? 'Restore' : 'Suspend'}</button>`
       : '—';
-    return `<td>${cell(record.name, record.businessName || record.niche || '')}</td><td>${cell(record.email, record.ninLast4 ? `${record.username} · NIN ••••••• ${record.ninLast4} (${record.ninStatus || 'pending'})` : record.username)}</td><td>${status(record.role)}</td><td>${accountStatus}${record.suspensionReason ? `<small>${escapeHtml(record.suspensionReason)}</small>` : ''}</td><td>${escapeHtml(formatDate(record.createdAt))}</td><td>${action}</td>`;
+    return `<td>${cell(record.name, record.businessName || record.niche || '')}</td><td><div class="contact">${contactLines({ phone: record.phone, email: record.email })}<small>${escapeHtml(record.ninLast4 ? `${record.username} · NIN ••••••• ${record.ninLast4} (${record.ninStatus || 'pending'})` : record.username)}${record.placeOfOperation ? ` · ${escapeHtml(record.placeOfOperation)}` : ''}</small></div></td><td>${status(record.role)}</td><td>${accountStatus}${record.suspensionReason ? `<small>${escapeHtml(record.suspensionReason)}</small>` : ''}</td><td>${escapeHtml(formatDate(record.createdAt))}</td><td>${action}</td>`;
   }
   if (currentView === 'orders') {
-    const itemNames = (record.items || []).map((item) => `${item.name} ×${item.quantity}`).join(', ');
-    return `<td>${cell(record.reference, formatDate(record.createdAt))}</td><td>${cell(record.customerName, record.customerEmail)}<small>${escapeHtml(record.customerPhone)} · ${escapeHtml(record.deliveryAddress)}</small></td><td class="row-detail">${escapeHtml(itemNames || '—')}</td><td>${escapeHtml(formatMoney(record.totalNaira))}</td><td>${status(record.paymentStatus)}</td><td>${trackingCell(record)}</td>`;
+    const itemList = (record.items || []).map((item) => `<div class="order-line">${thumb(item.image, item.name)}<span>${escapeHtml(item.name)} ×${escapeHtml(item.quantity)}<small>${escapeHtml(item.seller || '')}</small></span></div>`).join('');
+    const sellerList = (record.sellers || []).map((seller) => `<div class="contact"><strong>${escapeHtml(seller.businessName || seller.name)}</strong><br>${contactLines(seller)}${seller.place ? `<small>${escapeHtml(seller.place)}</small>` : ''}</div>`).join('') || '—';
+    return `<td>${cell(record.reference, formatDate(record.createdAt))}</td><td><div class="contact"><strong>${escapeHtml(record.customerName)}</strong><br>${contactLines({ phone: record.customerPhone, email: record.customerEmail })}<small>${escapeHtml(record.deliveryAddress || '')}</small></div></td><td class="row-detail">${itemList || '—'}</td><td>${sellerList}</td><td>${escapeHtml(formatMoney(record.totalNaira))}</td><td>${status(record.paymentStatus)}</td><td>${trackingCell(record)}</td>`;
   }
   if (currentView === 'bookings') {
-    return `<td>${cell(record.service, record.providerName)}</td><td>${cell(record.customerName, record.customerEmail)}</td><td>${cell(record.time, record.neighbourhood)}</td><td>${escapeHtml(record.amountNaira ? formatMoney(record.amountNaira) : 'Quote pending')}</td><td>${status(record.status)}</td><td>${status(record.paymentStatus)}</td>`;
+    const provider = record.provider || {};
+    return `<td><div class="order-line">${thumb(record.image, record.service)}<span>${escapeHtml(record.service)}<small>${escapeHtml(record.providerName)}</small></span></div></td><td><div class="contact"><strong>${escapeHtml(provider.businessName || provider.name || record.providerName)}</strong><br>${contactLines(provider)}</div></td><td><div class="contact"><strong>${escapeHtml(record.customerName)}</strong><br>${contactLines({ phone: record.customerPhone, email: record.customerEmail })}</div></td><td>${cell(record.time, record.neighbourhood)}</td><td>${escapeHtml(record.amountNaira ? formatMoney(record.amountNaira) : 'Quote pending')}</td><td>${status(record.status)}</td><td>${status(record.paymentStatus)}</td>`;
   }
   if (currentView === 'listings') {
     const name = record.name || record.title;
@@ -152,8 +163,8 @@ function recordCells(record) {
 
 function headersForView() {
   if (currentView === 'users') return ['Account', 'Email and username', 'Role', 'Access', 'Joined', 'Action'];
-  if (currentView === 'orders') return ['Order', 'Customer and delivery', 'Items', 'Total', 'Payment', 'Delivery tracking'];
-  if (currentView === 'bookings') return ['Service', 'Customer', 'Requested time', 'Price', 'Booking', 'Payment'];
+  if (currentView === 'orders') return ['Order', 'Customer contact and delivery', 'Items', 'Seller contacts', 'Total', 'Payment', 'Delivery tracking'];
+  if (currentView === 'bookings') return ['Service', 'Provider contact', 'Customer contact', 'Requested time', 'Price', 'Booking', 'Payment'];
   if (currentView === 'listings') return ['Type', 'Listing', 'Account owner', 'Price', 'Visibility', 'Created'];
   if (currentView === 'chats') return ['Service and last activity', 'Customer', 'Service provider', 'Messages', 'Status', 'Chat'];
   if (currentView === 'payouts') return ['Transfer', 'Account owner', 'Role', 'Amount', 'Status'];

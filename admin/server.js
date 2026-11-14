@@ -20,7 +20,7 @@ function securityHeaders(response) {
   response.setHeader('X-Frame-Options', 'DENY');
   response.setHeader('Referrer-Policy', 'no-referrer');
   response.setHeader('Cache-Control', 'no-store');
-  response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://res.cloudinary.com; media-src 'self' https://res.cloudinary.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+  response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://res.cloudinary.com https://images.unsplash.com https://images.pexels.com; media-src 'self' https://res.cloudinary.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
 }
 
 function proxyApi(request, response) {
@@ -65,7 +65,7 @@ http.createServer((request, response) => {
     response.end(request.method === 'HEAD' ? undefined : JSON.stringify({ status: 'ok' }));
     return;
   }
-  if (pathname.startsWith('/api/')) return proxyApi(request, response);
+  if (pathname.startsWith('/api/') || (pathname.startsWith('/uploads/') && ['GET', 'HEAD'].includes(request.method))) return proxyApi(request, response);
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     response.writeHead(405, { Allow: 'GET, HEAD' });
     response.end();
