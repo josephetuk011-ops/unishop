@@ -46,7 +46,7 @@ const validProductCategories = new Set([...productCategoryGroups.flatMap((entry)
 const dispatchSignInEnabled = () => process.env.DISPATCH_SIGNIN_ENABLED !== 'false';
 const trackingSteps = [{ key: 'awaiting-pickup', label: 'Order confirmed' }, { key: 'collected', label: 'Collected from seller' }, { key: 'on-dispatch', label: 'On dispatch' }, { key: 'delivered', label: 'At your doorstep' }] as const;
 type Role = typeof roles[number];
-type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; resetTokenHash?: string; resetExpiresAt?: number; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; termsAcceptedAt?: string; termsVersion?: string; phone?: string; };
+type User = { id: string; name: string; username?: string; email: string; role: Role; businessName?: string; position?: string; placeOfOperation?: string; aboutMe?: string; profileImage?: string; ceoImage?: string; teamImages?: string[]; niche?: string; payoutAccount?: { recipientCode: string; bankName: string; accountName: string; accountLast4: string; accountNumber?: string }; passwordHash: string; createdAt: string; emailVerified?: boolean; otpCode?: string; otpExpiresAt?: number; lastLoginAt?: string; failedLoginCount?: number; suspendedAt?: string; suspensionReason?: string; resetTokenHash?: string; resetExpiresAt?: number; ninEncrypted?: string; ninLast4?: string; ninSubmittedAt?: string; ninStatus?: 'pending' | 'verified' | 'failed'; ninVerifiedAt?: string; ninNote?: string; referralCode?: string; referredBy?: string; referralWelcomeUsed?: boolean; referralRewarded?: boolean; referralCredits?: number; termsAcceptedAt?: string; termsVersion?: string; phone?: string; };
 type MarketplaceState = { users: User[]; orders: any[]; bookings: any[]; serviceListings: any[]; sellerProducts: any[]; reviews: any[]; payouts: any[]; auditLogs: any[]; notifications: any[]; pushSubscriptions: any[]; conversations: any[]; chatMessages: any[]; shortLikes?: Record<string, string[]>; sentMails?: any[] };
 type ApiError = Error & { status?: number };
 const accessTokenCookieName = 'unishop-access';
@@ -441,7 +441,7 @@ function publicBusinessProfile(userId: string | undefined) {
 }
 
 function hasCompleteBusinessProfile(user: User) {
-  return Boolean(user.name.trim() && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && isLocalUpload(user.profileImage) && isLocalUpload(user.ceoImage) && (!ninEnabled() || !requiresNin(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
+  return Boolean(user.name.trim() && (!['seller', 'provider'].includes(user.role) || user.phone?.trim()) && user.businessName?.trim() && user.position?.trim() && user.placeOfOperation?.trim() && user.aboutMe?.trim() && isLocalUpload(user.profileImage) && isLocalUpload(user.ceoImage) && (!ninEnabled() || !requiresNin(user.role) || (user.ninLast4 && user.ninStatus !== 'failed')));
 }
 
 function legacyUsername(user: User) {
@@ -509,12 +509,16 @@ const resolveImage = (value?: string) => !value ? '' : value.startsWith('/') || 
 // Contact details the admin sees for a vendor, provider or customer. Customers only give a phone number at checkout.
 function latestPhoneFor(userId?: string) {
   if (!userId) return '';
+  const saved = state.users.find((entry) => entry.id === userId)?.phone;
+  if (saved) return saved;
   const order = state.orders.filter((entry) => entry.userId === userId && entry.phone).sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0))[0];
   return order?.phone || '';
 }
 function contactOf(user?: User) {
-  if (!user) return { name: '', businessName: '', email: '', phone: '', place: '' };
-  return { name: user.name, businessName: user.businessName || '', email: user.email, phone: user.phone || latestPhoneFor(user.id), place: user.placeOfOperation || '' };
+  if (!user) return { name: '', businessName: '', email: '', phone: '', place: '', payout: null };
+  const account = user.payoutAccount;
+  const payout = account ? { bankName: account.bankName, accountName: account.accountName, accountNumber: account.accountNumber || '', last4: account.accountLast4 } : null;
+  return { name: user.name, businessName: user.businessName || '', email: user.email, phone: user.phone || latestPhoneFor(user.id), place: user.placeOfOperation || '', payout };
 }
 function bookingImage(bookingId?: string) {
   const booking = state.bookings.find((item) => item.id === bookingId);
@@ -1059,11 +1063,11 @@ app.get('/api/admin/records', (request, response) => {
       ? state.orders.map((order) => {
         const customer = userById.get(order.userId);
         const sellerIds = [...new Set<string>((order.items || []).map((item: any) => item.sellerUserId).filter(Boolean))];
-        const sellers = sellerIds.map((id) => ({ id, ...contactOf(userById.get(id)) }));
+        const sellers = sellerIds.map((id) => { const line = (order.settlementLines || []).find((entry: any) => entry.userId === id); return { id, ...contactOf(userById.get(id)), netNaira: line ? Number(line.netNaira) : undefined }; });
         return { ...safeOrder(order), customerName: order.customerName || customer?.name || 'Guest', customerEmail: order.email || customer?.email || '', customerPhone: order.phone || latestPhoneFor(order.userId), deliveryAddress: order.address || '', customerId: order.userId, sellers };
       })
       : kind === 'bookings'
-        ? state.bookings.map((booking) => ({ ...booking, image: bookingImage(booking.id), customerName: userById.get(booking.userId)?.name || 'Customer', customerEmail: userById.get(booking.userId)?.email || '', customerPhone: latestPhoneFor(booking.userId), providerName: userById.get(booking.providerUserId)?.name || booking.provider || 'Provider', provider: contactOf(userById.get(booking.providerUserId)) }))
+        ? state.bookings.map((booking) => ({ ...booking, image: bookingImage(booking.id), customerName: userById.get(booking.userId)?.name || 'Customer', customerEmail: userById.get(booking.userId)?.email || '', customerPhone: latestPhoneFor(booking.userId), providerName: userById.get(booking.providerUserId)?.name || booking.provider || 'Provider', provider: contactOf(userById.get(booking.providerUserId)), providerNetNaira: (state.orders.filter((order) => order.bookingId === booking.id).flatMap((order: any) => order.settlementLines || []).filter((line: any) => line.userId === booking.providerUserId).reduce((sum: number, line: any) => sum + Number(line.netNaira || 0), 0)) || undefined }))
         : kind === 'listings'
           ? [
             ...state.sellerProducts.map((product) => ({ ...product, listingType: 'Product', ownerId: product.userId, ownerName: userById.get(product.userId)?.name || product.seller || 'Seller', ownerRole: 'seller', isSuspended: isAccountSuspended(product.userId) })),
@@ -1230,7 +1234,8 @@ app.post('/api/payout/account', asyncRoute(async (request, response) => {
     recipientCode: recipient.recipient_code,
     bankName: resolved.bank_name || recipient.details?.bank_name || 'Nigerian bank',
     accountName: resolved.account_name,
-    accountLast4: accountNumber.slice(-4)
+    accountLast4: accountNumber.slice(-4),
+    accountNumber
   };
   saveState();
   response.status(201).json({ account: { bankName: user.payoutAccount.bankName, accountName: user.payoutAccount.accountName, accountLast4: user.payoutAccount.accountLast4 } });
@@ -1389,7 +1394,7 @@ app.post(['/api/uploads/short-video', '/api/uploads/product-video'], (request: R
 
 app.get('/api/dashboard', (request: Request, response: Response) => {
   const user = requireUser(request);
-  const payoutAccount = user.payoutAccount ? { bankName: user.payoutAccount.bankName, accountName: user.payoutAccount.accountName, accountLast4: user.payoutAccount.accountLast4 } : null;
+  const payoutAccount = user.payoutAccount ? { bankName: user.payoutAccount.bankName, accountName: user.payoutAccount.accountName, accountLast4: user.payoutAccount.accountLast4, sharedWithAdmin: Boolean(user.payoutAccount.accountNumber) } : null;
   const payouts = state.payouts.filter((payout) => payout.userId === user.id).map(payoutResponse);
   const payoutMetrics = { availableBalanceNaira: availableBalanceFor(user.id), payoutAccount, payouts };
   if (user.role === 'provider') {
@@ -1987,6 +1992,7 @@ app.patch('/api/profile', (request: Request, response: Response) => {
   user.profileImage = parsed.data.profileImage;
   user.ceoImage = parsed.data.ceoImage;
   user.teamImages = parsed.data.teamImages ?? user.teamImages ?? [];
+  if (['seller', 'provider'].includes(user.role) && !parsed.data.phone && !user.phone) fail(400, 'Add your phone number so Unishop can reach you about orders and payments.');
   if (parsed.data.phone) user.phone = parsed.data.phone;
   saveState();
   auditAction('profile.updated', user.id, { role: user.role });
@@ -2281,8 +2287,11 @@ app.post('/api/payments/initialize', asyncRoute(async (request: Request, respons
     settlementLines = booking.providerUserId ? [{ userId: booking.providerUserId, role: 'provider', subtotalNaira: serviceSubtotalNaira, commissionNaira, dispatchContributionNaira, netNaira: providerNetNaira }] : [];
     totalNaira = serviceSubtotalNaira + 500;
     orderItems = [{ productId: booking.providerId, name: booking.service, seller: booking.provider, sellerUserId: booking.providerUserId, unitPrice: serviceSubtotalNaira, quantity: 1, lineTotal: totalNaira, service: true }];
+    const bookingPhone = typeof customer?.phone === 'string' && /^[0-9+()\s-]{7,20}$/.test(customer.phone.trim()) ? customer.phone.trim() : user.phone || latestPhoneFor(user.id);
+    if (!bookingPhone) fail(400, 'Enter your phone number so the service provider and Unishop can reach you.');
+    if (user.phone !== bookingPhone) { user.phone = bookingPhone; saveState(); }
     customerName = user.name;
-    phone = '';
+    phone = bookingPhone;
     address = '';
     neighbourhood = booking.neighbourhood;
     receiptEmail = user.email;

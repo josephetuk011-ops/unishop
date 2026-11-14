@@ -131,6 +131,13 @@ function contactLines(contact) {
   const email = contact.email ? `<a href="mailto:${escapeHtml(contact.email)}">${escapeHtml(contact.email)}</a>` : '';
   return `${phone}${email ? `<br>${email}` : ''}`;
 }
+function payoutLines(contact, amount) {
+  const payout = contact && contact.payout;
+  const owed = amount ? `<small>Pay seller: <strong>${escapeHtml(formatMoney(amount))}</strong></small>` : '';
+  if (!payout) return `<div class="payout-box missing">No bank account saved yet${owed}</div>`;
+  if (!payout.accountNumber) return `<div class="payout-box missing">${escapeHtml(payout.bankName)} ending ${escapeHtml(payout.last4)}. Full number not shared yet; ask them to re-save it.${owed}</div>`;
+  return `<div class="payout-box"><strong>${escapeHtml(payout.accountName)}</strong><br>${escapeHtml(payout.bankName)} · ${escapeHtml(payout.accountNumber)} <button type="button" class="table-action" data-copy="${escapeHtml(payout.accountNumber)}">Copy</button>${owed}</div>`;
+}
 function recordCells(record) {
   if (currentView === 'users') {
     const accountStatus = record.suspendedAt ? status('suspended') : status('active');
@@ -141,12 +148,12 @@ function recordCells(record) {
   }
   if (currentView === 'orders') {
     const itemList = (record.items || []).map((item) => `<div class="order-line">${thumb(item.image, item.name)}<span>${escapeHtml(item.name)} ×${escapeHtml(item.quantity)}<small>${escapeHtml(item.seller || '')}</small></span></div>`).join('');
-    const sellerList = (record.sellers || []).map((seller) => `<div class="contact"><strong>${escapeHtml(seller.businessName || seller.name)}</strong><br>${contactLines(seller)}${seller.place ? `<small>${escapeHtml(seller.place)}</small>` : ''}</div>`).join('') || '—';
+    const sellerList = (record.sellers || []).map((seller) => `<div class="contact"><strong>${escapeHtml(seller.businessName || seller.name)}</strong><br>${contactLines(seller)}${payoutLines(seller, seller.netNaira)}${seller.place ? `<small>${escapeHtml(seller.place)}</small>` : ''}</div>`).join('') || '—';
     return `<td>${cell(record.reference, formatDate(record.createdAt))}</td><td><div class="contact"><strong>${escapeHtml(record.customerName)}</strong><br>${contactLines({ phone: record.customerPhone, email: record.customerEmail })}<small>${escapeHtml(record.deliveryAddress || '')}</small></div></td><td class="row-detail">${itemList || '—'}</td><td>${sellerList}</td><td>${escapeHtml(formatMoney(record.totalNaira))}</td><td>${status(record.paymentStatus)}</td><td>${trackingCell(record)}</td>`;
   }
   if (currentView === 'bookings') {
     const provider = record.provider || {};
-    return `<td><div class="order-line">${thumb(record.image, record.service)}<span>${escapeHtml(record.service)}<small>${escapeHtml(record.providerName)}</small></span></div></td><td><div class="contact"><strong>${escapeHtml(provider.businessName || provider.name || record.providerName)}</strong><br>${contactLines(provider)}</div></td><td><div class="contact"><strong>${escapeHtml(record.customerName)}</strong><br>${contactLines({ phone: record.customerPhone, email: record.customerEmail })}</div></td><td>${cell(record.time, record.neighbourhood)}</td><td>${escapeHtml(record.amountNaira ? formatMoney(record.amountNaira) : 'Quote pending')}</td><td>${status(record.status)}</td><td>${status(record.paymentStatus)}</td>`;
+    return `<td><div class="order-line">${thumb(record.image, record.service)}<span>${escapeHtml(record.service)}<small>${escapeHtml(record.providerName)}</small></span></div></td><td><div class="contact"><strong>${escapeHtml(provider.businessName || provider.name || record.providerName)}</strong><br>${contactLines(provider)}${payoutLines(provider, record.providerNetNaira)}</div></td><td><div class="contact"><strong>${escapeHtml(record.customerName)}</strong><br>${contactLines({ phone: record.customerPhone, email: record.customerEmail })}</div></td><td>${cell(record.time, record.neighbourhood)}</td><td>${escapeHtml(record.amountNaira ? formatMoney(record.amountNaira) : 'Quote pending')}</td><td>${status(record.status)}</td><td>${status(record.paymentStatus)}</td>`;
   }
   if (currentView === 'listings') {
     const name = record.name || record.title;
@@ -163,8 +170,8 @@ function recordCells(record) {
 
 function headersForView() {
   if (currentView === 'users') return ['Account', 'Email and username', 'Role', 'Access', 'Joined', 'Action'];
-  if (currentView === 'orders') return ['Order', 'Customer contact and delivery', 'Items', 'Seller contacts', 'Total', 'Payment', 'Delivery tracking'];
-  if (currentView === 'bookings') return ['Service', 'Provider contact', 'Customer contact', 'Requested time', 'Price', 'Booking', 'Payment'];
+  if (currentView === 'orders') return ['Order', 'Customer contact and delivery', 'Items', 'Seller contacts and bank', 'Total', 'Payment', 'Delivery tracking'];
+  if (currentView === 'bookings') return ['Service', 'Provider contact and bank', 'Customer contact', 'Requested time', 'Price', 'Booking', 'Payment'];
   if (currentView === 'listings') return ['Type', 'Listing', 'Account owner', 'Price', 'Visibility', 'Created'];
   if (currentView === 'chats') return ['Service and last activity', 'Customer', 'Service provider', 'Messages', 'Status', 'Chat'];
   if (currentView === 'payouts') return ['Transfer', 'Account owner', 'Role', 'Amount', 'Status'];
@@ -279,6 +286,8 @@ function bindEvents() {
       try { await loadRecords(); } catch (error) { notify(error.message); }
       return;
     }
+    const copy = event.target.closest('[data-copy]');
+    if (copy) { try { await navigator.clipboard.writeText(copy.dataset.copy); copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy'; }, 1500); } catch { copy.textContent = copy.dataset.copy; } return; }
     const track = event.target.closest('[data-track-order]');
     if (track) {
       track.disabled = true;

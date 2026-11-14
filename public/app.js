@@ -987,9 +987,9 @@ document.querySelector('#booking-form').addEventListener('submit', async (event)
   const provider = providers.find((person) => person.id === form.dataset.provider);
   try {
     const result = await apiRequest('/api/bookings', { method: 'POST', body: JSON.stringify({ providerId: provider.id, neighbourhood: form.elements.neighbourhood.value, time: form.elements.time.value, note: form.elements.note.value }) });
-    const plan = await window.UnishopPayPlan.choose(result.booking.amountNaira + 500);
+    const plan = await window.UnishopPayPlan.choose(result.booking.amountNaira + 500, { askPhone: true, phone: currentUser?.phone });
     if (!plan) { notify('Your booking is saved. Pay from your dashboard when you are ready.'); return; }
-    const payment = await apiRequest('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: result.booking.id, paymentPlan: plan }) });
+    const payment = await apiRequest('/api/payments/initialize', { method: 'POST', body: JSON.stringify({ bookingId: result.booking.id, paymentPlan: plan, customer: { phone: window.UnishopPayPlan.phone } }) });
     window.location.assign(payment.authorizationUrl);
     return;
   } catch (error) {

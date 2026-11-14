@@ -37,7 +37,7 @@ const server = app.listen(0, async () => {
     const reg = (username, role = 'customer', extra = {}) => send('POST', '/api/auth/register', { name: 'Pay Person', username, email: `${username}@example.com`, password: 'marketplacepassword123', role, acceptTerms: true, ...extra });
     const sellerReg = await reg(`partsel${stamp}`, 'seller', { businessName: 'Part Store' });
     assert.equal((await send('POST', '/api/profile/nin', { nin: '12345678904' }, sellerReg.data.token)).status, 200);
-    assert.equal((await send('PATCH', '/api/profile', { name: 'Part Seller', businessName: 'Part Store', position: 'Owner', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'A local shop sharing practical goods with customers around Uyo.', profileImage: '/uploads/a.jpg', ceoImage: '/uploads/b.jpg' }, sellerReg.data.token)).status, 200);
+    assert.equal((await send('PATCH', '/api/profile', { name: 'Part Seller', businessName: 'Part Store', position: 'Owner', phone: '08030000000', placeOfOperation: 'Ewet Housing, Uyo', aboutMe: 'A local shop sharing practical goods with customers around Uyo.', profileImage: '/uploads/a.jpg', ceoImage: '/uploads/b.jpg' }, sellerReg.data.token)).status, 200);
     const form = new FormData(); form.append('images', new Blob([Buffer.from([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' }), 'i.jpg');
     const up = await nativeFetch(base + '/api/uploads/portfolio', { method: 'POST', headers: { authorization: `Bearer ${sellerReg.data.token}` }, body: form });
     const image = (await up.json()).images[0];
