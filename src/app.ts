@@ -661,6 +661,19 @@ function availableBalanceFor(userId: string) {
   return Math.max(0, releasedEarningsFor(userId) - reservedAndPaidOut);
 }
 
+// Seller and provider money in three buckets, all as their own share after commission:
+// paid = customer has paid, pending = paid but the customer has not confirmed yet, released = customer confirmed.
+function moneyTrackerFor(userId: string) {
+  let paidNaira = 0; let releasedNaira = 0;
+  state.orders.forEach((order) => {
+    if (order.paymentStatus !== 'paid') return;
+    const share = (order.settlementLines || []).filter((line: any) => line.userId === userId).reduce((sum: number, line: any) => sum + Number(line.netNaira || 0), 0);
+    paidNaira += share;
+    if (order.settlementReleasedAt) releasedNaira += share;
+  });
+  return { paidNaira, pendingNaira: paidNaira - releasedNaira, releasedNaira };
+}
+
 // Confirmed money the vendor has not actually received: the free balance plus transfers stuck in review.
 function releasableFor(userId: string) {
   const stuck = state.payouts.filter((payout) => payout.userId === userId && ['initializing', 'needs-review', 'pending', 'otp'].includes(payout.status)).reduce((sum, payout) => sum + payout.amountNaira, 0);
@@ -1417,7 +1430,7 @@ app.get('/api/dashboard', (request: Request, response: Response) => {
   const user = requireUser(request);
   const payoutAccount = user.payoutAccount ? { bankName: user.payoutAccount.bankName, accountName: user.payoutAccount.accountName, accountLast4: user.payoutAccount.accountLast4, sharedWithAdmin: Boolean(user.payoutAccount.accountNumber) } : null;
   const payouts = state.payouts.filter((payout) => payout.userId === user.id).map(payoutResponse);
-  const payoutMetrics = { availableBalanceNaira: availableBalanceFor(user.id), releasableNaira: releasableFor(user.id), payoutAccount, payouts };
+  const payoutMetrics = { availableBalanceNaira: availableBalanceFor(user.id), releasableNaira: releasableFor(user.id), moneyTracker: moneyTrackerFor(user.id), payoutAccount, payouts };
   if (user.role === 'provider') {
     const listings = state.serviceListings.filter((listing) => listing.userId === user.id);
     const listingIds = new Set(listings.map((listing) => listing.id));
