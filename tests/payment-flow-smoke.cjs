@@ -242,6 +242,11 @@ const server = app.listen(0, async () => {
     assert.equal((await send('GET', '/api/dashboard', undefined, rider.data.token)).data.availableBalanceNaira, 1000);
     const sellerReleased = await send('GET', '/api/dashboard', undefined, seller.data.token);
     assert.equal(sellerReleased.data.availableBalanceNaira, 10610);
+    const release = await send('POST', '/api/payouts/request-release', undefined, seller.data.token);
+    assert.equal(release.status, 201, 'a vendor with confirmed money can request release');
+    assert.equal(release.data.amountNaira, 10610);
+    assert.equal((await send('POST', '/api/payouts/request-release', undefined, seller.data.token)).status, 429, 'only one request per 2 hours');
+    assert.equal((await send('POST', '/api/payouts/request-release', undefined, registration.data.token)).status, 403, 'customers cannot request a release');
     const sellerOrder = sellerReleased.data.orders[0];
     assert.ok(sellerOrder && sellerOrder.items.length && sellerOrder.items.every((item) => item.name && item.image), 'seller order lines show product name and picture');
     assert.equal(typeof sellerOrder.yourTotalNaira, 'number');
