@@ -95,6 +95,7 @@ const server = app.listen(0, async () => {
     inbox = await send('GET', '/api/notifications', undefined, provider.data.token);
     assert(inbox.data.notifications.some((item) => item.title === 'Payment on its way'));
 
+    assert.equal((await send('POST', '/api/payouts/request-release', undefined, provider.data.token)).status, 409, 'nothing to release after an automatic payout');
     // Admin can read the provider's phone and full bank details from the bookings list.
     const adminLogin = await send('POST', '/api/admin/login', { password: 'admin-password-for-tests' });
     const adminBookings = await send('GET', '/api/admin/records?kind=bookings', undefined, adminLogin.data.token);

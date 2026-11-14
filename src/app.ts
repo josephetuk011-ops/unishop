@@ -661,6 +661,12 @@ function availableBalanceFor(userId: string) {
   return Math.max(0, releasedEarningsFor(userId) - reservedAndPaidOut);
 }
 
+// Confirmed money the vendor has not actually received: the free balance plus transfers stuck in review.
+function releasableFor(userId: string) {
+  const stuck = state.payouts.filter((payout) => payout.userId === userId && ['initializing', 'needs-review', 'pending', 'otp'].includes(payout.status)).reduce((sum, payout) => sum + payout.amountNaira, 0);
+  return availableBalanceFor(userId) + stuck;
+}
+
 function releaseSettlement(order: any) {
   if (order.settlementReleasedAt) return false;
   order.settlementReleasedAt = new Date().toISOString();
@@ -1297,6 +1303,21 @@ app.post('/api/payouts/withdraw', asyncRoute(async (request, response) => {
     throw error;
   }
 }));
+// A vendor who has not been paid 2 hours after the customer confirmed can ask Unishop to release the funds by hand.
+app.post('/api/payouts/request-release', (request: Request, response: Response) => {
+  const user = requireUser(request);
+  if (!['seller', 'provider', 'dispatch'].includes(user.role)) fail(403, 'Release requests are only available to marketplace earners.');
+  const amountNaira = releasableFor(user.id);
+  if (amountNaira < 1) fail(409, 'You have nothing waiting. Money from customer-confirmed orders and bookings that is already paid out, or still waiting for the customer to confirm, cannot be released.');
+  const last = state.auditLogs.filter((entry) => entry.action === 'payout.release-requested' && entry.actorId === user.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (last && Date.now() - Date.parse(last.createdAt) < 2 * 60 * 60 * 1000) fail(429, 'You already asked for a release in the last 2 hours. Unishop is on it.');
+  auditAction('payout.release-requested', user.id, { amountNaira, role: user.role });
+  const account = user.payoutAccount;
+  notifyAdmin({ title: 'Vendor asked for funds to be released', body: `${user.businessName || user.name} (${user.role}) is waiting for ${formatNaira(amountNaira)}. Phone: ${user.phone || 'not set'}. Bank: ${account ? `${account.bankName} ${account.accountNumber || `ending ${account.accountLast4}`}` : 'none saved'}.`, url: '/' });
+  notifyUser(user.id, { title: 'Release request received', body: `Unishop will release ${formatNaira(amountNaira)} to your saved bank account shortly.`, url: '/dashboard.html' });
+  saveState();
+  response.status(201).json({ requested: true, amountNaira });
+});
 app.post('/api/payouts/:reference/retry', asyncRoute(async (request, response) => {
   const user = requireUser(request);
   const payout = state.payouts.find((item) => item.reference === request.params.reference && item.userId === user.id);
@@ -1396,7 +1417,7 @@ app.get('/api/dashboard', (request: Request, response: Response) => {
   const user = requireUser(request);
   const payoutAccount = user.payoutAccount ? { bankName: user.payoutAccount.bankName, accountName: user.payoutAccount.accountName, accountLast4: user.payoutAccount.accountLast4, sharedWithAdmin: Boolean(user.payoutAccount.accountNumber) } : null;
   const payouts = state.payouts.filter((payout) => payout.userId === user.id).map(payoutResponse);
-  const payoutMetrics = { availableBalanceNaira: availableBalanceFor(user.id), payoutAccount, payouts };
+  const payoutMetrics = { availableBalanceNaira: availableBalanceFor(user.id), releasableNaira: releasableFor(user.id), payoutAccount, payouts };
   if (user.role === 'provider') {
     const listings = state.serviceListings.filter((listing) => listing.userId === user.id);
     const listingIds = new Set(listings.map((listing) => listing.id));
